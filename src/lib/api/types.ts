@@ -74,7 +74,7 @@ export interface ConnectionCreate {
 }
 
 export interface Room {
-  id: string;
+  id: number;
   name: string;
   capacity: number | null;
   building: string | null;
@@ -83,12 +83,19 @@ export interface Room {
 }
 
 export interface RoomCreate {
-  id: string;
   name: string;
   capacity?: number | null;
   building?: string | null;
   waypoint_id?: string | null;
   floor_id: number;
+}
+
+export interface RoomUpdate {
+  name?: string | null;
+  capacity?: number | null;
+  building?: string | null;
+  waypoint_id?: string | null;
+  floor_id?: number | null;
 }
 
 export interface NavigationRequest {

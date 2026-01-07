@@ -10,6 +10,7 @@ import {
   ConnectionCreate,
   Room,
   RoomCreate,
+  RoomUpdate,
   NavigationRequest,
   NavigationResponse,
 } from './types';
@@ -144,7 +145,7 @@ export const roomsApi = {
     return data;
   },
 
-  getOne: async (id: string): Promise<Room> => {
+  getOne: async (id: number): Promise<Room> => {
     const { data } = await createClient().get(`/api/rooms/${id}`);
     return data;
   },
@@ -159,7 +160,12 @@ export const roomsApi = {
     return data;
   },
 
-  delete: async (id: string): Promise<string> => {
+  update: async (id: number, room: RoomUpdate): Promise<Room> => {
+    const { data } = await createClient().put(`/api/rooms/${id}`, room);
+    return data;
+  },
+
+  delete: async (id: number): Promise<string> => {
     const { data } = await createClient().delete(`/api/rooms/${id}`);
     return data;
   },

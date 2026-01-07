@@ -171,13 +171,13 @@ export default function FloorsPage() {
                 
                 {/* Actions */}
                 <div className="absolute bottom-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <label>
+                  <label onClick={(e) => e.stopPropagation()}>
                     <input
                       type="file"
                       accept="image/*"
                       className="hidden"
-                      onClick={(e) => e.stopPropagation()}
                       onChange={(e) => {
+                        e.stopPropagation();
                         if (e.target.files?.[0]) {
                           handleImageUpload(floor.id, e.target.files[0]);
                         }

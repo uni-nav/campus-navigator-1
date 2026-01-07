@@ -84,7 +84,6 @@ export default function RoomsPage() {
 
     try {
       const roomToCreate: RoomCreate = {
-        id: `room_${Date.now()}`,
         name: newRoom.name,
         capacity: newRoom.capacity || null,
         building: newRoom.building || null,
@@ -108,7 +107,7 @@ export default function RoomsPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: number) => {
     if (!confirm("Xonani o'chirishni xohlaysizmi?")) return;
 
     try {

@@ -82,7 +82,7 @@ export default function NavigationPage() {
     try {
       const result = await navigationApi.findPath({
         start_waypoint_id: kioskWaypointId,
-        end_room_id: room.id,
+        end_room_id: room.id.toString(),
       });
       setNavigationResult(result);
     } catch (error) {

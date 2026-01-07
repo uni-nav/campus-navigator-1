@@ -182,6 +182,8 @@ export default function FloorEditorPage() {
   }, [fabricCanvas, connections, waypoints]);
 
   // Draw waypoints
+  const WAYPOINT_RADIUS = 10;
+  
   const drawWaypoints = useCallback(() => {
     if (!fabricCanvas) return;
 
@@ -192,23 +194,31 @@ export default function FloorEditorPage() {
 
     waypoints.forEach((wp) => {
       const circle = new Circle({
-        left: wp.x - 8,
-        top: wp.y - 8,
-        radius: 8,
+        left: wp.x - WAYPOINT_RADIUS,
+        top: wp.y - WAYPOINT_RADIUS,
+        radius: WAYPOINT_RADIUS,
         fill: WAYPOINT_COLORS[wp.type],
-        stroke: selectedWaypoint?.id === wp.id ? '#fff' : 'transparent',
-        strokeWidth: 2,
-        selectable: true,
+        stroke: selectedWaypoint?.id === wp.id ? '#fff' : 'rgba(0,0,0,0.3)',
+        strokeWidth: selectedWaypoint?.id === wp.id ? 3 : 1,
+        selectable: editorMode === 'select',
         hasControls: false,
         hasBorders: false,
+        originX: 'center',
+        originY: 'center',
         data: { waypoint: wp },
+      });
+
+      // Position using center origin
+      circle.set({
+        left: wp.x,
+        top: wp.y,
       });
 
       fabricCanvas.add(circle);
     });
 
     fabricCanvas.renderAll();
-  }, [fabricCanvas, waypoints, selectedWaypoint]);
+  }, [fabricCanvas, waypoints, selectedWaypoint, editorMode]);
 
   // Update canvas when data changes
   useEffect(() => {
@@ -319,8 +329,9 @@ export default function FloorEditorPage() {
       const wpData = target?.data?.waypoint as Waypoint | undefined;
       
       if (wpData) {
-        wpData.x = Math.round(target.left + 8);
-        wpData.y = Math.round(target.top + 8);
+        // Using center origin, so position is the center
+        wpData.x = Math.round(target.left);
+        wpData.y = Math.round(target.top);
       }
     };
 
@@ -330,15 +341,18 @@ export default function FloorEditorPage() {
       
       if (wpData) {
         try {
+          const newX = Math.round(target.left);
+          const newY = Math.round(target.top);
+          
           await waypointsApi.update(wpData.id, {
-            x: Math.round(target.left + 8),
-            y: Math.round(target.top + 8),
+            x: newX,
+            y: newY,
           });
           
           setWaypoints((prev) =>
             prev.map((w) =>
               w.id === wpData.id
-                ? { ...w, x: Math.round(target.left + 8), y: Math.round(target.top + 8) }
+                ? { ...w, x: newX, y: newY }
                 : w
             )
           );
@@ -407,15 +421,17 @@ export default function FloorEditorPage() {
   const handleLinkRoom = async (roomId: string) => {
     if (!editingWaypoint) return;
 
-    const room = rooms.find((r) => r.id === roomId);
+    const roomIdNum = parseInt(roomId);
+    const room = rooms.find((r) => r.id === roomIdNum);
     if (!room) return;
 
     try {
-      // Update the room's waypoint_id - this would need a room update API
-      // For now, just update local state
+      // Update the room's waypoint_id via API
+      await roomsApi.update(roomIdNum, { waypoint_id: editingWaypoint.id });
+      
       setRooms((prev) =>
         prev.map((r) =>
-          r.id === roomId ? { ...r, waypoint_id: editingWaypoint.id } : r
+          r.id === roomIdNum ? { ...r, waypoint_id: editingWaypoint.id } : r
         )
       );
       
@@ -667,10 +683,10 @@ export default function FloorEditorPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {rooms
-                        .filter((r) => !r.waypoint_id)
+                        .filter((r) => !r.waypoint_id || r.waypoint_id === editingWaypoint.id)
                         .map((room) => (
-                          <SelectItem key={room.id} value={room.id}>
-                            {room.name}
+                          <SelectItem key={room.id} value={room.id.toString()}>
+                            {room.name} {room.waypoint_id === editingWaypoint.id ? "(bog'langan)" : ''}
                           </SelectItem>
                         ))}
                     </SelectContent>
