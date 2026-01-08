@@ -10,6 +10,7 @@ import WaypointsPage from "./pages/WaypointsPage";
 import RoomsPage from "./pages/RoomsPage";
 import NavigationPage from "./pages/NavigationPage";
 import SettingsPage from "./pages/SettingsPage";
+import KioskDisplayPage from "./pages/KioskDisplayPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -21,6 +22,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
+          {/* Admin Routes */}
           <Route element={<AdminLayout />}>
             <Route path="/" element={<Navigate to="/floors" replace />} />
             <Route path="/floors" element={<FloorsPage />} />
@@ -30,6 +32,10 @@ const App = () => (
             <Route path="/navigation" element={<NavigationPage />} />
             <Route path="/settings" element={<SettingsPage />} />
           </Route>
+          
+          {/* Kiosk Display (Public - White Theme) */}
+          <Route path="/kiosk" element={<KioskDisplayPage />} />
+          
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

@@ -201,24 +201,21 @@ export default function FloorEditorPage() {
 
     waypoints.forEach((wp) => {
       const circle = new Circle({
-        left: wp.x - WAYPOINT_RADIUS,
-        top: wp.y - WAYPOINT_RADIUS,
+        left: wp.x,
+        top: wp.y,
         radius: WAYPOINT_RADIUS,
         fill: WAYPOINT_COLORS[wp.type],
         stroke: selectedWaypoint?.id === wp.id ? '#fff' : 'rgba(0,0,0,0.3)',
         strokeWidth: selectedWaypoint?.id === wp.id ? 3 : 1,
         selectable: editorMode === 'select',
+        evented: true, // Always evented for click detection
         hasControls: false,
         hasBorders: false,
         originX: 'center',
         originY: 'center',
         data: { waypoint: wp },
-      });
-
-      // Position using center origin
-      circle.set({
-        left: wp.x,
-        top: wp.y,
+        // Increase hit area for easier clicking
+        padding: 5,
       });
 
       fabricCanvas.add(circle);
