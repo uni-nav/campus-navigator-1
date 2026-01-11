@@ -1,29 +1,34 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, MapPin, Clock, Footprints, ArrowRight, RotateCcw, Building2 } from 'lucide-react';
+import { Search, MapPin, Clock, Footprints, ArrowRight, RotateCcw, Building2, AlertCircle } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { floorsApi, roomsApi, navigationApi, getApiUrl } from '@/lib/api/client';
-import { Floor, Room, NavigationResponse, PathStep } from '@/lib/api/types';
+import { floorsApi, kioskApi, getApiUrl } from '@/lib/api/client';
+import { Floor, KioskNavigationResponse, KioskFloorDisplay, KioskTransitionDisplay, KioskSearchResult, KioskConfig } from '@/lib/api/types';
 import { useAppStore } from '@/lib/store';
-import { cn } from '@/lib/utils';
 import { KioskFloorMap } from '@/components/kiosk/KioskFloorMap';
 import { KioskTransitionCard } from '@/components/kiosk/KioskTransitionCard';
 
+// Type guard for transition display
+function isTransitionDisplay(display: KioskFloorDisplay | KioskTransitionDisplay): display is KioskTransitionDisplay {
+  return 'floor_type' in display && display.floor_type === 'transition';
+}
+
 export default function KioskDisplayPage() {
-  const { kioskWaypointId } = useAppStore();
+  const { kioskId } = useAppStore();
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Room[]>([]);
+  const [searchResults, setSearchResults] = useState<KioskSearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   
   const [floors, setFloors] = useState<Floor[]>([]);
-  const [rooms, setRooms] = useState<Room[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
+  const [kioskConfig, setKioskConfig] = useState<KioskConfig | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<KioskSearchResult | null>(null);
   
-  const [navigationResult, setNavigationResult] = useState<NavigationResponse | null>(null);
+  const [navigationResult, setNavigationResult] = useState<KioskNavigationResponse | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   const [idleTimeout, setIdleTimeout] = useState<NodeJS.Timeout | null>(null);
   const IDLE_TIMEOUT_MS = 60000; // 1 minute
@@ -32,18 +37,24 @@ export default function KioskDisplayPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [floorsData, roomsData] = await Promise.all([
-          floorsApi.getAll(),
-          roomsApi.getAll(),
-        ]);
+        const floorsData = await floorsApi.getAll();
         setFloors(floorsData);
-        setRooms(roomsData);
+
+        // Load kiosk config if kioskId is set
+        if (kioskId) {
+          try {
+            const config = await kioskApi.getConfig(kioskId);
+            setKioskConfig(config);
+          } catch (err) {
+            console.warn('Kiosk config not found:', err);
+          }
+        }
       } catch (error) {
         console.error('Failed to load data:', error);
       }
     };
     loadData();
-  }, []);
+  }, [kioskId]);
 
   // Reset idle timer
   const resetIdleTimer = useCallback(() => {
@@ -73,24 +84,33 @@ export default function KioskDisplayPage() {
     };
   }, [resetIdleTimer, idleTimeout]);
 
-  // Search rooms
+  // Search rooms with debounce
   useEffect(() => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
       return;
     }
 
-    const filtered = rooms.filter((room) =>
-      room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      room.building?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-    setSearchResults(filtered.slice(0, 10));
-  }, [searchQuery, rooms]);
+    const debounceTimer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results = await kioskApi.searchRooms(searchQuery);
+        setSearchResults(results.slice(0, 10));
+      } catch (err) {
+        console.error('Search failed:', err);
+        setSearchResults([]);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchQuery]);
 
   // Handle room selection and navigation
-  const handleSelectRoom = async (room: Room) => {
-    if (!kioskWaypointId) {
-      console.error('Kiosk waypoint not configured');
+  const handleSelectRoom = async (room: KioskSearchResult) => {
+    if (!kioskId) {
+      setError('Kiosk sozlanmagan. Iltimos, Settings sahifasidan kiosk ID ni kiriting.');
       return;
     }
 
@@ -98,15 +118,22 @@ export default function KioskDisplayPage() {
     setIsNavigating(true);
     setSearchQuery('');
     setSearchResults([]);
+    setError(null);
 
     try {
-      const result = await navigationApi.findPath({
-        start_waypoint_id: kioskWaypointId,
-        end_room_id: room.id.toString(),
+      const result = await kioskApi.navigate({
+        kiosk_id: kioskId,
+        destination_room_id: room.room_id,
       });
-      setNavigationResult(result);
-    } catch (error) {
-      console.error('Navigation failed:', error);
+      
+      if (result.success) {
+        setNavigationResult(result);
+      } else {
+        setError('Yo\'l topilmadi. Iltimos, boshqa xonani tanlang.');
+      }
+    } catch (err: any) {
+      console.error('Navigation failed:', err);
+      setError(err?.response?.data?.detail || 'Navigatsiya xatosi yuz berdi');
       setNavigationResult(null);
     } finally {
       setIsNavigating(false);
@@ -120,70 +147,21 @@ export default function KioskDisplayPage() {
     setSelectedRoom(null);
     setNavigationResult(null);
     setIsNavigating(false);
+    setError(null);
   };
-
-  // Group path steps by floor
-  const getFloorGroups = useCallback(() => {
-    if (!navigationResult?.path) return [];
-
-    const groups: { floorId: number; steps: PathStep[]; isTransition?: boolean; floorsSkipped?: number[] }[] = [];
-    let currentFloorId: number | null = null;
-    let currentSteps: PathStep[] = [];
-
-    navigationResult.path.forEach((step, index) => {
-      if (currentFloorId === null) {
-        currentFloorId = step.floor_id;
-        currentSteps.push(step);
-      } else if (step.floor_id !== currentFloorId) {
-        // Save current floor group
-        groups.push({ floorId: currentFloorId, steps: currentSteps });
-        
-        // Check if floors are skipped (non-adjacent)
-        const floorDiff = Math.abs(step.floor_id - currentFloorId);
-        if (floorDiff > 1) {
-          const skippedFloors: number[] = [];
-          const direction = step.floor_id > currentFloorId ? 1 : -1;
-          for (let i = currentFloorId + direction; i !== step.floor_id; i += direction) {
-            skippedFloors.push(i);
-          }
-          groups.push({ 
-            floorId: -1, 
-            steps: [], 
-            isTransition: true, 
-            floorsSkipped: skippedFloors 
-          });
-        }
-        
-        currentFloorId = step.floor_id;
-        currentSteps = [step];
-      } else {
-        currentSteps.push(step);
-      }
-    });
-
-    if (currentSteps.length > 0 && currentFloorId !== null) {
-      groups.push({ floorId: currentFloorId, steps: currentSteps });
-    }
-
-    return groups;
-  }, [navigationResult]);
 
   const getFloorName = (floorId: number) => {
     const floor = floors.find((f) => f.id === floorId);
     return floor?.name || `${floorId}-qavat`;
   };
 
-  const getFloorImage = (floorId: number) => {
-    const floor = floors.find((f) => f.id === floorId);
-    if (!floor?.image_url) return null;
-    
-    if (/^https?:\/\//i.test(floor.image_url)) return floor.image_url;
+  const getFloorImage = (imageUrl: string | null) => {
+    if (!imageUrl) return null;
+    if (/^https?:\/\//i.test(imageUrl)) return imageUrl;
     const base = getApiUrl().replace(/\/$/, '');
-    const path = floor.image_url.startsWith('/') ? floor.image_url : `/${floor.image_url}`;
+    const path = imageUrl.startsWith('/') ? imageUrl : `/${imageUrl}`;
     return `${base}${path}`;
   };
-
-  const floorGroups = getFloorGroups();
 
   return (
     <div className="min-h-screen bg-white text-gray-900 flex flex-col">
@@ -194,7 +172,9 @@ export default function KioskDisplayPage() {
             <Building2 className="w-10 h-10" />
             <div>
               <h1 className="text-2xl font-bold">Universitet Navigatsiyasi</h1>
-              <p className="text-emerald-100 text-sm">Xonani qidiring va yo'l toping</p>
+              <p className="text-emerald-100 text-sm">
+                {kioskConfig ? kioskConfig.floor_name : 'Xonani qidiring va yo\'l toping'}
+              </p>
             </div>
           </div>
           {selectedRoom && (
@@ -213,6 +193,16 @@ export default function KioskDisplayPage() {
 
       {/* Main Content */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-6">
+        {/* Error Display */}
+        {error && (
+          <Card className="p-4 mb-6 bg-red-50 border-red-200">
+            <div className="flex items-center gap-3 text-red-700">
+              <AlertCircle className="w-5 h-5" />
+              <p>{error}</p>
+            </div>
+          </Card>
+        )}
+
         {!selectedRoom ? (
           /* Search Mode */
           <div className="h-full flex flex-col items-center justify-center space-y-8">
@@ -234,6 +224,11 @@ export default function KioskDisplayPage() {
                   className="w-full pl-14 pr-4 py-6 text-xl border-2 border-gray-200 rounded-2xl focus:border-emerald-500 focus:ring-emerald-500 bg-white"
                   autoFocus
                 />
+                {isSearching && (
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                    <div className="w-5 h-5 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                  </div>
+                )}
               </div>
 
               {/* Search Results */}
@@ -242,9 +237,10 @@ export default function KioskDisplayPage() {
                   <ScrollArea className="max-h-96">
                     {searchResults.map((room) => (
                       <button
-                        key={room.id}
+                        key={room.room_id}
                         onClick={() => handleSelectRoom(room)}
-                        className="w-full p-4 text-left hover:bg-emerald-50 transition-colors flex items-center gap-4 border-b border-gray-100 last:border-0"
+                        disabled={!room.has_waypoint}
+                        className="w-full p-4 text-left hover:bg-emerald-50 transition-colors flex items-center gap-4 border-b border-gray-100 last:border-0 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center">
                           <MapPin className="w-6 h-6 text-emerald-600" />
@@ -252,9 +248,12 @@ export default function KioskDisplayPage() {
                         <div className="flex-1">
                           <p className="font-semibold text-lg text-gray-800">{room.name}</p>
                           <p className="text-gray-500">
-                            {getFloorName(room.floor_id)}
+                            {room.floor_name}
                             {room.building && ` • ${room.building} blok`}
                           </p>
+                          {!room.has_waypoint && (
+                            <p className="text-red-500 text-sm">Navigatsiya mavjud emas</p>
+                          )}
                         </div>
                         <ArrowRight className="w-6 h-6 text-gray-400" />
                       </button>
@@ -264,29 +263,24 @@ export default function KioskDisplayPage() {
               )}
 
               {/* No Results */}
-              {searchQuery && searchResults.length === 0 && (
+              {searchQuery && !isSearching && searchResults.length === 0 && (
                 <Card className="absolute top-full left-0 right-0 mt-2 p-8 text-center">
                   <p className="text-gray-500">Hech narsa topilmadi</p>
                 </Card>
               )}
             </div>
 
-            {/* Quick Access / Popular Rooms */}
-            <div className="w-full max-w-2xl">
-              <p className="text-center text-gray-400 mb-4">Tez-tez qidiriladigan joylar</p>
-              <div className="flex flex-wrap justify-center gap-3">
-                {rooms.slice(0, 6).map((room) => (
-                  <Button
-                    key={room.id}
-                    variant="outline"
-                    onClick={() => handleSelectRoom(room)}
-                    className="rounded-full border-gray-200 hover:border-emerald-500 hover:bg-emerald-50"
-                  >
-                    {room.name}
-                  </Button>
-                ))}
-              </div>
-            </div>
+            {/* Kiosk Config Warning */}
+            {!kioskId && (
+              <Card className="p-4 bg-amber-50 border-amber-200 max-w-xl">
+                <div className="flex items-center gap-3 text-amber-700">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                  <p className="text-sm">
+                    Kiosk sozlanmagan. Settings sahifasidan Kiosk ID ni kiriting.
+                  </p>
+                </div>
+              </Card>
+            )}
           </div>
         ) : (
           /* Navigation Mode */
@@ -301,7 +295,7 @@ export default function KioskDisplayPage() {
                   <p className="text-sm text-emerald-600 font-medium">Manzil</p>
                   <h2 className="text-2xl font-bold text-gray-800">{selectedRoom.name}</h2>
                   <p className="text-gray-500">
-                    {getFloorName(selectedRoom.floor_id)}
+                    {selectedRoom.floor_name}
                     {selectedRoom.building && ` • ${selectedRoom.building} blok`}
                   </p>
                 </div>
@@ -334,6 +328,15 @@ export default function KioskDisplayPage() {
                   </div>
                 )}
               </div>
+
+              {/* Stairs info */}
+              {navigationResult?.stairs_used && (
+                <div className="mt-4 pt-4 border-t border-emerald-200">
+                  <p className="text-emerald-700">
+                    <strong>{navigationResult.stairs_used}</strong> orqali yuqoriga/pastga o'ting
+                  </p>
+                </div>
+              )}
             </Card>
 
             {/* Loading State */}
@@ -346,46 +349,31 @@ export default function KioskDisplayPage() {
             {/* Navigation Maps */}
             {navigationResult && !isNavigating && (
               <div className="space-y-6">
-                {floorGroups.map((group, index) => (
-                  group.isTransition ? (
+                {navigationResult.floors_to_display.map((display, index) => (
+                  isTransitionDisplay(display) ? (
                     <KioskTransitionCard 
                       key={`transition-${index}`}
-                      floorsSkipped={group.floorsSkipped || []}
+                      floorsSkipped={display.floors_passed}
                       getFloorName={getFloorName}
+                      stairsName={display.stairs_name}
+                      message={display.message}
                     />
                   ) : (
                     <KioskFloorMap
-                      key={group.floorId}
-                      floorId={group.floorId}
-                      floorName={getFloorName(group.floorId)}
-                      imageUrl={getFloorImage(group.floorId)}
-                      pathSteps={group.steps}
+                      key={display.floor_id}
+                      floorId={display.floor_id}
+                      floorName={display.floor_name}
+                      imageUrl={getFloorImage(display.image_url)}
+                      pathCoordinates={display.path_coordinates}
+                      instructions={display.instructions}
                       isStartFloor={index === 0}
-                      isEndFloor={index === floorGroups.length - 1}
-                      selectedRoom={selectedRoom}
+                      isEndFloor={index === navigationResult.floors_to_display.length - 1}
+                      stairsExit={display.stairs_exit}
+                      stairsEntry={display.stairs_entry}
                     />
                   )
                 ))}
               </div>
-            )}
-
-            {/* Instructions */}
-            {navigationResult && navigationResult.path.length > 0 && (
-              <Card className="p-6">
-                <h3 className="font-semibold text-lg mb-4 text-gray-800">Yo'l ko'rsatmalari</h3>
-                <div className="space-y-3">
-                  {navigationResult.path
-                    .filter((step) => step.instruction)
-                    .map((step, index) => (
-                      <div key={index} className="flex items-start gap-3">
-                        <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                          <span className="text-emerald-600 font-semibold text-sm">{index + 1}</span>
-                        </div>
-                        <p className="text-gray-700 pt-1">{step.instruction}</p>
-                      </div>
-                    ))}
-                </div>
-              </Card>
             )}
           </div>
         )}

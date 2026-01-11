@@ -22,6 +22,8 @@ export default function SettingsPage() {
     setApiUrl: setStoreApiUrl, 
     kioskWaypointId, 
     setKioskWaypointId,
+    kioskId,
+    setKioskId,
     isApiConnected,
     setIsApiConnected,
   } = useAppStore();
@@ -176,6 +178,18 @@ export default function SettingsPage() {
 
           <div className="space-y-4">
             <div className="space-y-2">
+              <Label>Kiosk ID</Label>
+              <Input
+                placeholder="kiosk_main_entrance"
+                value={kioskId || ''}
+                onChange={(e) => setKioskId(e.target.value || null)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Backend da yaratilgan kiosk ID sini kiriting
+              </p>
+            </div>
+
+            <div className="space-y-2">
               <Label>Qavat</Label>
               <Select
                 value={selectedFloorId?.toString() || ''}
@@ -215,10 +229,10 @@ export default function SettingsPage() {
               </Select>
             </div>
 
-            {kioskWaypointId && (
+            {kioskId && (
               <div className="p-3 rounded-lg bg-muted text-sm">
                 <p className="text-muted-foreground">
-                  Tanlangan nuqta: <span className="text-foreground font-medium">{kioskWaypointId}</span>
+                  Kiosk ID: <span className="text-foreground font-medium">{kioskId}</span>
                 </p>
               </div>
             )}
@@ -226,7 +240,7 @@ export default function SettingsPage() {
             <Button 
               onClick={handleSaveKioskLocation} 
               className="w-full gap-2"
-              disabled={!kioskWaypointId}
+              disabled={!kioskId}
             >
               <Save className="w-4 h-4" />
               Saqlash

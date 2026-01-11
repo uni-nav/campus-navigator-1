@@ -123,6 +123,110 @@ export interface NavigationResponse {
   estimated_time_minutes: number;
 }
 
+// Kiosk Types
+export interface Kiosk {
+  id: string;
+  name: string;
+  waypoint_id: string;
+  floor_id: number;
+  is_active: boolean;
+  idle_timeout: number;
+  language: string;
+}
+
+export interface KioskCreate {
+  id: string;
+  name: string;
+  waypoint_id: string;
+  floor_id: number;
+  is_active?: boolean;
+  idle_timeout?: number;
+  language?: string;
+}
+
+export interface KioskConfig {
+  kiosk_id: string;
+  waypoint_id: string;
+  floor_id: number;
+  floor_name: string;
+  position: {
+    x: number;
+    y: number;
+  };
+  settings: {
+    idle_timeout_seconds: number;
+    language: string;
+    show_room_photos: boolean;
+  };
+}
+
+export interface StairsConnection {
+  id: number;
+  stairs_bottom_id: string;
+  stairs_top_id: string;
+  name: string;
+  is_bidirectional: boolean;
+  vertical_distance: number;
+}
+
+export interface StairsConnectionCreate {
+  stairs_bottom_id: string;
+  stairs_top_id: string;
+  name: string;
+  is_bidirectional?: boolean;
+  vertical_distance?: number;
+}
+
+export interface KioskNavigationRequest {
+  kiosk_id: string;
+  destination_room_id: number;
+}
+
+export interface KioskFloorDisplay {
+  floor_id: number;
+  floor_name: string;
+  image_url: string | null;
+  path_coordinates: [number, number][];
+  instructions: string[];
+  stairs_exit?: {
+    waypoint_id: string;
+    label: string;
+    coordinates: [number, number];
+  };
+  stairs_entry?: {
+    waypoint_id: string;
+    label: string;
+    coordinates: [number, number];
+  };
+}
+
+export interface KioskTransitionDisplay {
+  floor_type: 'transition';
+  floors_passed: number[];
+  message: string;
+  stairs_name: string;
+}
+
+export interface KioskNavigationResponse {
+  success: boolean;
+  navigation_type: 'same_floor' | 'adjacent_floor' | 'multi_floor';
+  floors_to_display: (KioskFloorDisplay | KioskTransitionDisplay)[];
+  total_distance: number;
+  estimated_time_minutes: number;
+  floor_changes: number;
+  stairs_used?: string;
+}
+
+export interface KioskSearchResult {
+  room_id: number;
+  name: string;
+  floor_id: number;
+  floor_name: string;
+  building: string | null;
+  type: string | null;
+  has_waypoint: boolean;
+}
+
 export interface ApiError {
   detail: Array<{
     loc: (string | number)[];

@@ -10,6 +10,8 @@ interface AppState {
   // Kiosk Settings
   kioskWaypointId: string | null;
   setKioskWaypointId: (id: string | null) => void;
+  kioskId: string | null;
+  setKioskId: (id: string | null) => void;
 
   // Selected Floor
   selectedFloorId: number | null;
@@ -45,6 +47,8 @@ export const useAppStore = create<AppState>()(
       // Kiosk Settings
       kioskWaypointId: null,
       setKioskWaypointId: (id) => set({ kioskWaypointId: id }),
+      kioskId: null,
+      setKioskId: (id) => set({ kioskId: id }),
 
       // Selected Floor
       selectedFloorId: null,
@@ -74,6 +78,7 @@ export const useAppStore = create<AppState>()(
       partialize: (state) => ({
         apiUrl: state.apiUrl,
         kioskWaypointId: state.kioskWaypointId,
+        kioskId: state.kioskId,
       }),
     }
   )
