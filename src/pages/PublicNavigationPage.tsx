@@ -1,15 +1,43 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, Navigation, RotateCcw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { roomsApi, floorsApi, kiosksApi, navigationApi, waypointsApi, getApiUrl } from '@/lib/api/client';
 import type { Floor, Kiosk, NavigationResponse, PathStep, Room, Waypoint } from '@/lib/api/types';
-import { useAppStore } from '@/lib/store';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-const ANIMATION_SPEED = 90; // px per second in canvas space
+const ANIMATION_SPEED = 60; // px per second in canvas space
+const IDLE_TIMEOUT_MS = 300_000;
+const CACHE_PREFIX = 'kiosk_cache_v1';
+const CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24; // 24h
+
+type CacheEntry<T> = { ts: number; value: T };
+
+const cacheKey = (key: string) => `${CACHE_PREFIX}:${getApiUrl()}:${key}`;
+
+const loadCache = <T,>(key: string): T | null => {
+  try {
+    const raw = localStorage.getItem(cacheKey(key));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CacheEntry<T>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (Date.now() - parsed.ts > CACHE_MAX_AGE_MS) return null;
+    return parsed.value ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const saveCache = <T,>(key: string, value: T) => {
+  try {
+    localStorage.setItem(cacheKey(key), JSON.stringify({ ts: Date.now(), value }));
+  } catch {
+    // ignore cache failures
+  }
+};
 type AnimationState = 'active' | 'pending' | 'completed';
 
 const resolveMediaUrl = (url: string | null) => {
@@ -119,8 +147,12 @@ const AnimatedPathCanvas = ({
   const imageRef = useRef<HTMLImageElement | null>(null);
   const moverIconRef = useRef<HTMLImageElement | null>(null);
   const rafRef = useRef<number | null>(null);
+  const sizeRef = useRef({ width: 0, height: 0, dpr: 1 });
+  const drawRef = useRef<(progress: number | null, pulse: number) => void>(() => {});
+  const animateRef = useRef<(time: number) => void>(() => {});
   const progressRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
+  const frameTimeRef = useRef<number | null>(null);
   const completedRef = useRef(false);
 
   const stopAnimation = useCallback(() => {
@@ -129,8 +161,28 @@ const AnimatedPathCanvas = ({
       rafRef.current = null;
     }
     lastTimeRef.current = null;
+    frameTimeRef.current = null;
     progressRef.current = 0;
     completedRef.current = false;
+  }, []);
+
+  const syncCanvasSize = useCallback(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return { width: 0, height: 0, dpr: 1 };
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    const dpr = window.devicePixelRatio || 1;
+    if (width === 0 || height === 0) return { width: 0, height: 0, dpr };
+    const prev = sizeRef.current;
+    if (prev.width !== width || prev.height !== height || prev.dpr !== dpr) {
+      canvas.width = Math.max(1, Math.floor(width * dpr));
+      canvas.height = Math.max(1, Math.floor(height * dpr));
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      sizeRef.current = { width, height, dpr };
+    }
+    return { width, height, dpr };
   }, []);
 
   const draw = useCallback(
@@ -142,13 +194,8 @@ const AnimatedPathCanvas = ({
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      const dpr = window.devicePixelRatio || 1;
-      canvas.width = Math.max(1, Math.floor(width * dpr));
-      canvas.height = Math.max(1, Math.floor(height * dpr));
-      canvas.style.width = `${width}px`;
-      canvas.style.height = `${height}px`;
+      const { width, height, dpr } = syncCanvasSize();
+      if (width === 0 || height === 0) return;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
@@ -337,7 +384,7 @@ const AnimatedPathCanvas = ({
 
       // Stairs markers
       const drawMarker = (marker: TransitionMarker, color: string, label: string) => {
-        const pos = { x: offsetX + marker.x * scale, y: offsetY + marker.y * scale };
+        const pos = toCanvas({ x: marker.x, y: marker.y });
         ctx.beginPath();
         ctx.fillStyle = color;
         ctx.strokeStyle = '#0f172a';
@@ -406,7 +453,7 @@ const AnimatedPathCanvas = ({
         }
       }
     },
-    [endPoint, markers, poi, showEmptyState, showMover, startPoint, steps, title]
+    [endPoint, markers, poi, showEmptyState, showMover, startPoint, steps, syncCanvasSize, title]
   );
 
   useEffect(() => {
@@ -424,6 +471,12 @@ const AnimatedPathCanvas = ({
 
   const animate = useCallback(
     (time: number) => {
+      const targetInterval = animationState === 'active' ? 1000 / 60 : 1000 / 24;
+      if (frameTimeRef.current && time - frameTimeRef.current < targetInterval) {
+        rafRef.current = requestAnimationFrame(animateRef.current);
+        return;
+      }
+      frameTimeRef.current = time;
       const pulse = (Math.sin(time / 320) + 1) / 2;
       const points = steps.map((step) => ({ x: step.x, y: step.y }));
       const canAnimateStatic = animateStatic && (poi.length > 0 || startPoint || endPoint);
@@ -451,7 +504,7 @@ const AnimatedPathCanvas = ({
 
       if (!Number.isFinite(totalLength) || totalLength === 0) {
         draw(null, pulse);
-        rafRef.current = requestAnimationFrame(animate);
+        rafRef.current = requestAnimationFrame(animateRef.current);
         return;
       }
 
@@ -463,7 +516,7 @@ const AnimatedPathCanvas = ({
         lastTimeRef.current = time;
         completedRef.current = false;
         draw(0, pulse);
-        rafRef.current = requestAnimationFrame(animate);
+        rafRef.current = requestAnimationFrame(animateRef.current);
         return;
       }
 
@@ -473,7 +526,7 @@ const AnimatedPathCanvas = ({
         lastTimeRef.current = time;
         completedRef.current = true;
         draw(totalLength, pulse);
-        rafRef.current = requestAnimationFrame(animate);
+        rafRef.current = requestAnimationFrame(animateRef.current);
         return;
       }
 
@@ -491,20 +544,39 @@ const AnimatedPathCanvas = ({
       }
       draw(progress, pulse);
       progressRef.current = progress;
-      rafRef.current = requestAnimationFrame(animate);
+      rafRef.current = requestAnimationFrame(animateRef.current);
     },
-    [animateStatic, animationState, draw, endPoint, onComplete, poi.length, startPoint, steps, stopAnimation]
+    [
+      animateStatic,
+      animationState,
+      draw,
+      endPoint,
+      onComplete,
+      poi.length,
+      startPoint,
+      steps,
+      stopAnimation,
+    ]
   );
+
+  useLayoutEffect(() => {
+    drawRef.current = draw;
+  }, [draw]);
+
+  useLayoutEffect(() => {
+    animateRef.current = animate;
+  }, [animate]);
 
   useEffect(() => {
     stopAnimation();
     if (!floor?.image_url) {
       imageRef.current = null;
-      draw(null, 0);
+      drawRef.current(null, 0);
       return;
     }
     const imageUrl = resolveMediaUrl(floor.image_url);
     if (!imageUrl) return;
+    let cancelled = false;
 
     const loadImage = (withCors: boolean) =>
       new Promise<HTMLImageElement>((resolve, reject) => {
@@ -517,38 +589,58 @@ const AnimatedPathCanvas = ({
 
     loadImage(true)
       .then((img) => {
+        if (cancelled) return;
         imageRef.current = img;
-        draw(null, 0);
-        rafRef.current = requestAnimationFrame(animate);
+        drawRef.current(null, 0);
+        if (rafRef.current === null) {
+          rafRef.current = requestAnimationFrame(animateRef.current);
+        }
       })
       .catch(() => {
         loadImage(false)
           .then((img) => {
+            if (cancelled) return;
             imageRef.current = img;
-            draw(null, 0);
-            rafRef.current = requestAnimationFrame(animate);
+            drawRef.current(null, 0);
+            if (rafRef.current === null) {
+              rafRef.current = requestAnimationFrame(animateRef.current);
+            }
           })
           .catch(() => {
+            if (cancelled) return;
             imageRef.current = null;
-            draw(null, 0);
+            drawRef.current(null, 0);
           });
       });
 
-    return () => stopAnimation();
-  }, [floor?.image_url, steps, draw, animate, stopAnimation]);
+    return () => {
+      cancelled = true;
+      stopAnimation();
+    };
+  }, [floor?.image_url, stopAnimation]);
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const observer = new ResizeObserver(() => draw(null, 0));
+    const observer = new ResizeObserver(() => {
+      syncCanvasSize();
+      drawRef.current(null, 0);
+    });
     observer.observe(containerRef.current);
     return () => observer.disconnect();
-  }, [draw]);
+  }, [syncCanvasSize]);
 
   useEffect(() => {
     progressRef.current = 0;
     lastTimeRef.current = null;
+    frameTimeRef.current = null;
     completedRef.current = false;
   }, [animationState, steps]);
+
+  useEffect(() => {
+    if (!imageRef.current) return;
+    if (rafRef.current !== null) return;
+    rafRef.current = requestAnimationFrame(animateRef.current);
+  }, [animationState, animateStatic, endPoint, poi.length, startPoint, steps]);
 
   return (
     <div ref={containerRef} className="relative w-full h-full">
@@ -558,10 +650,13 @@ const AnimatedPathCanvas = ({
 };
 
 export default function PublicNavigationPage() {
-  const { kioskWaypointId } = useAppStore();
+  const [searchParams] = useSearchParams();
+  const completedRunsRef = useRef<Set<number>>(new Set());
+  const idleTimerRef = useRef<number | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const offlineNotifiedRef = useRef(false);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [floors, setFloors] = useState<Floor[]>([]);
-  const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [kioskWaypoints, setKioskWaypoints] = useState<Waypoint[]>([]);
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Room[]>([]);
@@ -570,33 +665,115 @@ export default function PublicNavigationPage() {
   const [activeRunIndex, setActiveRunIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [kioskFloorId, setKioskFloorId] = useState<number | null>(null);
+  const [kioskWaypointId, setKioskWaypointId] = useState<string | null>(null);
+  const [kioskConfig, setKioskConfig] = useState<Kiosk | null>(null);
+  const [kioskConfigError, setKioskConfigError] = useState<string | null>(null);
+  const [isKioskLoading, setIsKioskLoading] = useState(false);
+  const isKioskReady = Boolean(kioskConfig?.id) && !kioskConfigError;
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [showAttract, setShowAttract] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const notifyOffline = useCallback(() => {
+    if (offlineNotifiedRef.current) return;
+    offlineNotifiedRef.current = true;
+    setOfflineMode(true);
+    toast.info('Offline rejim: cache maʼlumotlari ishlatilmoqda');
+  }, []);
+
+  const clearOffline = useCallback(() => {
+    offlineNotifiedRef.current = false;
+    setOfflineMode(false);
+  }, []);
+
+  const requestFullscreen = useCallback(() => {
+    const el = rootRef.current ?? document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) {
+      el.requestFullscreen().catch(() => {});
+    }
+  }, []);
+
+  const handleAttractStart = useCallback(() => {
+    setShowAttract(false);
+    requestFullscreen();
+  }, [requestFullscreen]);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [roomsData, floorsData, kiosksData] = await Promise.all([
-          roomsApi.getAll(),
-          floorsApi.getAll(),
-          kiosksApi.getAll(),
-        ]);
+        const [roomsData, floorsData] = await Promise.all([roomsApi.getAll(), floorsApi.getAll()]);
         setRooms(roomsData);
         setFloors(floorsData);
-        setKiosks(kiosksData);
+        saveCache('rooms', roomsData);
+        saveCache('floors', floorsData);
+        clearOffline();
       } catch (error) {
-        toast.error('Maʼlumotlarni yuklashda xato');
+        const cachedRooms = loadCache<Room[]>('rooms');
+        const cachedFloors = loadCache<Floor[]>('floors');
+        if (cachedRooms) setRooms(cachedRooms);
+        if (cachedFloors) setFloors(cachedFloors);
+        if (cachedRooms || cachedFloors) {
+          notifyOffline();
+        } else {
+          toast.error('Maʼlumotlarni yuklashda xato');
+        }
       }
     };
     loadData();
-  }, []);
+  }, [clearOffline, notifyOffline]);
 
   useEffect(() => {
-    if (!kioskWaypointId) {
+    const rawId = searchParams.get('kiosk_id');
+    if (!rawId) {
+      setKioskConfig(null);
+      setKioskConfigError('Kiosk ID topilmadi. URL ga ?kiosk_id=... qo‘shing.');
       setKioskFloorId(null);
+      setKioskWaypointId(null);
       return;
     }
-    const match = kiosks.find((kiosk) => kiosk.waypoint_id === kioskWaypointId);
-    setKioskFloorId(match?.floor_id ?? null);
-  }, [kioskWaypointId, kiosks]);
+    const parsed = Number(rawId);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      setKioskConfig(null);
+      setKioskConfigError('Kiosk ID noto‘g‘ri formatda.');
+      setKioskFloorId(null);
+      setKioskWaypointId(null);
+      return;
+    }
+    setKioskConfigError(null);
+    setIsKioskLoading(true);
+    kiosksApi
+      .getById(parsed)
+      .then((data) => {
+        setKioskConfig(data);
+        setKioskFloorId(data.floor_id ?? null);
+        setKioskWaypointId(data.waypoint_id ?? null);
+        if (!data.waypoint_id) {
+          setKioskConfigError('Kiosk uchun waypoint belgilanmagan.');
+        }
+        saveCache(`kiosk:${parsed}`, data);
+        clearOffline();
+      })
+      .catch(() => {
+        const cachedKiosk = loadCache<Kiosk>(`kiosk:${parsed}`);
+        if (cachedKiosk) {
+          setKioskConfig(cachedKiosk);
+          setKioskFloorId(cachedKiosk.floor_id ?? null);
+          setKioskWaypointId(cachedKiosk.waypoint_id ?? null);
+          if (!cachedKiosk.waypoint_id) {
+            setKioskConfigError('Kiosk uchun waypoint belgilanmagan.');
+          }
+          notifyOffline();
+        } else {
+          setKioskConfig(null);
+          setKioskFloorId(null);
+          setKioskWaypointId(null);
+          setKioskConfigError('Kiosk topilmadi yoki yuklashda xato.');
+        }
+      })
+      .finally(() => {
+        setIsKioskLoading(false);
+      });
+  }, [searchParams, clearOffline, notifyOffline]);
 
   useEffect(() => {
     if (!kioskFloorId) {
@@ -607,15 +784,27 @@ export default function PublicNavigationPage() {
     waypointsApi
       .getByFloor(kioskFloorId)
       .then((data) => {
-        if (isActive) setKioskWaypoints(data);
+        if (isActive) {
+          setKioskWaypoints(data);
+          saveCache(`waypoints:${kioskFloorId}`, data);
+          clearOffline();
+        }
       })
       .catch(() => {
-        if (isActive) setKioskWaypoints([]);
+        if (isActive) {
+          const cachedWaypoints = loadCache<Waypoint[]>(`waypoints:${kioskFloorId}`);
+          if (cachedWaypoints) {
+            setKioskWaypoints(cachedWaypoints);
+            notifyOffline();
+          } else {
+            setKioskWaypoints([]);
+          }
+        }
       });
     return () => {
       isActive = false;
     };
-  }, [kioskFloorId]);
+  }, [kioskFloorId, clearOffline, notifyOffline]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -678,10 +867,17 @@ export default function PublicNavigationPage() {
 
   useEffect(() => {
     setActiveRunIndex(0);
+    completedRunsRef.current = new Set();
   }, [navigationResult]);
+
+  useEffect(() => {
+    completedRunsRef.current.delete(activeRunIndex);
+  }, [activeRunIndex]);
 
   const handleRunComplete = useCallback(
     (runIndex: number) => {
+      if (completedRunsRef.current.has(runIndex)) return;
+      completedRunsRef.current.add(runIndex);
       setActiveRunIndex((prev) => {
         if (runIndex !== prev) return prev;
         const next = prev + 1;
@@ -690,6 +886,15 @@ export default function PublicNavigationPage() {
     },
     [floorRuns.length]
   );
+
+  useEffect(() => {
+    if (!splitView) return;
+    const activeRun = floorRuns[activeRunIndex];
+    if (!activeRun) return;
+    if (activeRun.steps.length < 2) {
+      handleRunComplete(activeRunIndex);
+    }
+  }, [splitView, floorRuns, activeRunIndex, handleRunComplete]);
 
   const displayRuns = useMemo(() => {
     if (!splitView) {
@@ -746,15 +951,18 @@ export default function PublicNavigationPage() {
   }, [kioskFloorId, rooms, waypointMap, kioskWaypoints]);
 
   const handleSelectRoom = async (room: Room) => {
-    if (!kioskWaypointId) {
-      toast.error('Kiosk joylashuvi sozlanmagan. Admin panelda belgilang.');
+    if (!isKioskReady) {
+      toast.error(kioskConfigError || 'Kiosk maʼlumotlari yuklanmoqda.');
       return;
     }
     setSelectedRoom(room);
+    setNavigationResult(null);
+    setActiveRunIndex(0);
+    completedRunsRef.current = new Set();
     setIsLoading(true);
     try {
       const response = await navigationApi.findPath({
-        start_waypoint_id: kioskWaypointId,
+        kiosk_id: kioskConfig.id,
         end_room_id: room.id,
       });
       setNavigationResult(response);
@@ -766,15 +974,57 @@ export default function PublicNavigationPage() {
     }
   };
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setSelectedRoom(null);
     setNavigationResult(null);
     setQuery('');
     setSearchResults([]);
-  };
+    setActiveRunIndex(0);
+    completedRunsRef.current = new Set();
+    setIsLoading(false);
+  }, []);
+
+  const handleIdleReset = useCallback(() => {
+    handleReset();
+    setShowAttract(true);
+  }, [handleReset]);
+
+  const resetIdleTimer = useCallback(() => {
+    if (idleTimerRef.current !== null) {
+      window.clearTimeout(idleTimerRef.current);
+    }
+    idleTimerRef.current = window.setTimeout(() => {
+      handleIdleReset();
+    }, IDLE_TIMEOUT_MS);
+  }, [handleIdleReset]);
+
+  useEffect(() => {
+    resetIdleTimer();
+    const events = ['pointerdown', 'mousemove', 'keydown', 'touchstart'];
+    const onActivity = () => {
+      setShowAttract(false);
+      resetIdleTimer();
+    };
+    events.forEach((event) =>
+      window.addEventListener(event, onActivity, { passive: true })
+    );
+    return () => {
+      events.forEach((event) => window.removeEventListener(event, onActivity));
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current);
+      }
+    };
+  }, [resetIdleTimer]);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    onChange();
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
 
   return (
-    <div className="min-h-screen bg-black text-white relative">
+    <div ref={rootRef} className="min-h-screen bg-black text-white relative">
       <div
         className={cn(
           'absolute inset-0 grid h-full gap-4 p-4',
@@ -794,7 +1044,7 @@ export default function PublicNavigationPage() {
           }
           const floorId = run.floorId;
           const floor = floors.find((item) => item.id === floorId) || null;
-          const steps = run.steps;
+          let steps = run.steps;
           const markers = transitionMarkers.get(floorId) || { entry: [], exit: [] };
           const startPoint = navigationResult
             ? startStep && startStep.floor_id === floorId
@@ -807,6 +1057,46 @@ export default function PublicNavigationPage() {
             navigationResult && endStep && endStep.floor_id === floorId
               ? { x: endStep.x, y: endStep.y }
               : null;
+          if (navigationResult && steps.length < 2) {
+            const entry = markers.entry?.[0] || null;
+            const exit = markers.exit?.[0] || null;
+            const synthetic: PathStep[] = [];
+            if (entry) {
+              synthetic.push({
+                waypoint_id: entry.direction === 'up' ? 'stairs-entry-up' : 'stairs-entry-down',
+                floor_id: floorId,
+                x: entry.x,
+                y: entry.y,
+                type: 'stairs',
+                label: 'Zina',
+                instruction: null,
+              });
+            }
+            if (endPoint) {
+              synthetic.push({
+                waypoint_id: 'room-end',
+                floor_id: floorId,
+                x: endPoint.x,
+                y: endPoint.y,
+                type: 'room',
+                label: null,
+                instruction: null,
+              });
+            } else if (exit) {
+              synthetic.push({
+                waypoint_id: exit.direction === 'up' ? 'stairs-exit-up' : 'stairs-exit-down',
+                floor_id: floorId,
+                x: exit.x,
+                y: exit.y,
+                type: 'stairs',
+                label: 'Zina',
+                instruction: null,
+              });
+            }
+            if (synthetic.length >= 2) {
+              steps = synthetic;
+            }
+          }
           const showDefaultPoi = !navigationResult && floorId === kioskFloorId;
           const animationState: AnimationState = navigationResult
             ? splitView
@@ -848,6 +1138,12 @@ export default function PublicNavigationPage() {
         })}
       </div>
 
+      {offlineMode && (
+        <div className="absolute top-4 right-4 z-20 rounded-full bg-amber-500/20 px-3 py-1 text-xs text-amber-200 border border-amber-300/40">
+          Offline
+        </div>
+      )}
+
       <div className="relative z-10 flex items-start justify-between p-6 gap-6">
         <Card className="w-full max-w-sm bg-black/70 border-white/10 text-white">
           <div className="p-4 space-y-3">
@@ -861,6 +1157,7 @@ export default function PublicNavigationPage() {
                 placeholder="Xonani tanlang..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                disabled={!isKioskReady}
                 className="pl-9 bg-white/10 border-white/20 text-white placeholder:text-white/50"
               />
             </div>
@@ -871,8 +1168,9 @@ export default function PublicNavigationPage() {
                     key={room.id}
                     type="button"
                     onClick={() => handleSelectRoom(room)}
+                    disabled={!isKioskReady}
                     className={cn(
-                      'w-full text-left px-3 py-2 rounded-md transition',
+                      'w-full text-left px-3 py-2 rounded-md transition disabled:opacity-60 disabled:cursor-not-allowed',
                       selectedRoom?.id === room.id
                         ? 'bg-cyan-500/20 text-cyan-200'
                         : 'bg-white/5 hover:bg-white/10'
@@ -896,7 +1194,7 @@ export default function PublicNavigationPage() {
         </Card>
 
         <Card className="bg-black/70 border-white/10 text-white min-w-[220px]">
-          <div className="p-4 space-y-2">
+          <div className="p-4 space-y-3">
             <div className="text-xs text-white/60">Qavatlar</div>
             <div className="text-lg font-semibold">
               {displayRuns
@@ -913,11 +1211,52 @@ export default function PublicNavigationPage() {
         </Card>
       </div>
 
-      {!kioskWaypointId && (
+      {kioskConfigError && (
         <div className="absolute bottom-6 left-6 z-10">
           <Card className="bg-amber-500/20 border-amber-300/30 text-amber-100">
             <div className="p-3 text-sm">
-              Kiosk joylashuvi belgilanmagan. Admin panelda sozlang.
+              {kioskConfigError}
+            </div>
+          </Card>
+        </div>
+      )}
+      {isKioskLoading && (
+        <div className="absolute bottom-6 right-6 z-10">
+          <Card className="bg-blue-500/20 border-blue-300/30 text-blue-100">
+            <div className="p-3 text-sm">Kiosk maʼlumotlari yuklanmoqda...</div>
+          </Card>
+        </div>
+      )}
+
+      {showAttract && (
+        <div
+          className="absolute inset-0 z-30 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          onClick={handleAttractStart}
+        >
+          <Card
+            className="w-full max-w-lg mx-6 bg-black/80 border-white/10 text-white"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-8 text-center space-y-4">
+              <div className="text-2xl font-semibold">Xush kelibsiz!</div>
+              <div className="text-sm text-white/70">
+                Yo‘l topish uchun ekranga teging
+              </div>
+              {offlineMode && (
+                <div className="text-xs text-amber-200">
+                  Offline rejim: so‘nggi saqlangan maʼlumotlar ishlatilmoqda
+                </div>
+              )}
+              <div className="flex flex-col gap-2">
+                <Button onClick={handleAttractStart} className="w-full">
+                  Boshlash
+                </Button>
+                {!isFullscreen && (
+                  <Button variant="outline" onClick={requestFullscreen} className="w-full">
+                    Fullscreen
+                  </Button>
+                )}
+              </div>
             </div>
           </Card>
         </div>

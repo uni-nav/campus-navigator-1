@@ -10,6 +10,7 @@ import { roomsApi, navigationApi, floorsApi, waypointsApi, getApiUrl } from '@/l
 import { Room, Floor, NavigationResponse, PathStep, Waypoint } from '@/lib/api/types';
 import { useAppStore } from '@/lib/store';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 
 export default function NavigationPage() {
@@ -21,15 +22,15 @@ export default function NavigationPage() {
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [navigationResult, setNavigationResult] = useState<NavigationResponse | null>(null);
   const [navigating, setNavigating] = useState(false);
-  
+
   // Floor visualization state
   const [currentFloorIndex, setCurrentFloorIndex] = useState(0);
   const [floorsInPath, setFloorsInPath] = useState<number[]>([]);
   const [floorWaypoints, setFloorWaypoints] = useState<Record<number, Waypoint[]>>({});
-  
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  
+
   const { kioskWaypointId } = useAppStore();
 
   // Fetch initial data
@@ -131,9 +132,9 @@ export default function NavigationPage() {
     // Load floor image
     if (floor.image_url) {
       const imageUrl = resolveMediaUrl(floor.image_url);
-      
+
       const loadImage = async (withCors: boolean) => {
-        const options = withCors ? { crossOrigin: 'anonymous' } : undefined;
+        const options = withCors ? { crossOrigin: 'anonymous' as const } : undefined;
         return await FabricImage.fromURL(imageUrl, options);
       };
 
@@ -141,7 +142,7 @@ export default function NavigationPage() {
         const img = await loadImage(true);
         const canvasWidth = fabricCanvas.width || 700;
         const canvasHeight = fabricCanvas.height || 500;
-        
+
         const scale = Math.min(
           canvasWidth / (img.width || 1),
           canvasHeight / (img.height || 1)
@@ -325,7 +326,7 @@ export default function NavigationPage() {
 
           fabricCanvas.renderAll();
         } catch (fallbackError) {
-          console.error('Error loading floor image:', fallbackError);
+          logger.error('Error loading floor image', fallbackError);
         }
       }
     }

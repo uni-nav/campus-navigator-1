@@ -3,6 +3,7 @@ import { MapPin, Navigation } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { floorsApi, waypointsApi, connectionsApi, roomsApi } from '@/lib/api/client';
 import { Floor, Waypoint, Room } from '@/lib/api/types';
+import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 
 export default function WaypointsPage() {
@@ -22,7 +23,7 @@ export default function WaypointsPage() {
           setSelectedFloorId(sorted[0].id);
         }
       } catch (error) {
-        console.error('Error:', error);
+        logger.error('Error', error);
       } finally {
         setLoading(false);
       }
@@ -43,7 +44,7 @@ export default function WaypointsPage() {
         setWaypoints(waypointsData);
         setRooms(roomsData);
       } catch (error) {
-        console.error('Error:', error);
+        logger.error('Error', error);
       }
     };
 
@@ -136,7 +137,7 @@ export default function WaypointsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {waypoints.map((waypoint, index) => {
             const linkedRoom = rooms.find((r) => r.waypoint_id === waypoint.id);
-            
+
             return (
               <Card
                 key={waypoint.id}

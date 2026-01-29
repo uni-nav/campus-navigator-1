@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Floor, Waypoint, Connection, Room } from './api/types';
+import { config } from './config';
 
 interface AppState {
   // API Settings
@@ -38,8 +39,8 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set) => ({
-      // API Settings
-      apiUrl: 'http://localhost:8000',
+      // API Settings - use config default
+      apiUrl: config.apiUrl,
       setApiUrl: (url) => set({ apiUrl: url }),
 
       // Kiosk Settings

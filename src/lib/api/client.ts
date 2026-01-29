@@ -1,4 +1,7 @@
-import axios, { AxiosInstance } from 'axios';
+import axios, { AxiosInstance, type AxiosError } from 'axios';
+import { toast } from 'sonner';
+import { config } from '@/lib/config';
+import { logger } from '@/lib/logger';
 import {
   Floor,
   FloorCreate,
@@ -13,29 +16,92 @@ import {
   RoomUpdate,
   NavigationRequest,
   NavigationResponse,
+  MapAuditResponse,
   Kiosk,
   KioskCreate,
   KioskUpdate,
 } from './types';
 
 const API_URL_KEY = 'university_nav_api_url';
-const DEFAULT_API_URL = 'http://localhost:8000';
+const ADMIN_TOKEN_KEY = 'university_nav_admin_token';
 
+/**
+ * Get API URL from storage or use default from config
+ */
 export const getApiUrl = (): string => {
-  return localStorage.getItem(API_URL_KEY) || DEFAULT_API_URL;
+  const stored = sessionStorage.getItem(API_URL_KEY) || localStorage.getItem(API_URL_KEY);
+  return stored || config.apiUrl;
 };
 
+/**
+ * Set API URL in storage
+ */
 export const setApiUrl = (url: string): void => {
+  sessionStorage.setItem(API_URL_KEY, url);
   localStorage.setItem(API_URL_KEY, url);
 };
 
+/**
+ * Get admin token from sessionStorage (more secure than localStorage)
+ * TODO: Move to httpOnly cookies for production
+ */
+export const getAdminToken = (): string => {
+  return sessionStorage.getItem(ADMIN_TOKEN_KEY) || '';
+};
+
+/**
+ * Set admin token in sessionStorage
+ * Note: sessionStorage is cleared when tab closes (better security)
+ */
+export const setAdminToken = (token: string): void => {
+  const trimmed = token.trim();
+  if (!trimmed) {
+    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    return;
+  }
+  sessionStorage.setItem(ADMIN_TOKEN_KEY, trimmed);
+};
+
 const createClient = (): AxiosInstance => {
-  return axios.create({
+  const adminToken = getAdminToken();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (adminToken) {
+    headers.Authorization = `Bearer ${adminToken}`;
+  }
+
+  const client = axios.create({
     baseURL: getApiUrl(),
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers,
+    timeout: 30000,
   });
+
+  // Response interceptor for centralized error handling
+  client.interceptors.response.use(
+    (response) => response,
+    (error: AxiosError) => {
+      const status = error.response?.status;
+      logger.apiError(error.config?.url || 'unknown', error);
+
+      if (status === 401) {
+        toast.error('Autentifikatsiya xatosi');
+        setAdminToken('');
+      } else if (status === 403) {
+        toast.error('Ruxsat yo\'q');
+      } else if (status === 404) {
+        toast.error('Topilmadi');
+      } else if (status && status >= 500) {
+        toast.error('Server xatosi');
+      } else if (error.message === 'Network Error') {
+        toast.error('Internet ulanishi yo\'q');
+      }
+
+      return Promise.reject(error);
+    }
+  );
+
+  return client;
 };
 
 // Floors API
@@ -180,6 +246,11 @@ export const navigationApi = {
     const { data } = await createClient().get(`/api/navigation/nearby-rooms/${waypointId}`, {
       params: { radius },
     });
+    return data;
+  },
+
+  audit: async (): Promise<MapAuditResponse> => {
+    const { data } = await createClient().get(`/api/navigation/audit`);
     return data;
   },
 };

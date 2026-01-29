@@ -21,6 +21,7 @@ import {
 import { roomsApi, floorsApi, waypointsApi } from '@/lib/api/client';
 import { Room, RoomCreate, Floor, Waypoint } from '@/lib/api/types';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 
 export default function RoomsPage() {
@@ -31,7 +32,7 @@ export default function RoomsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
-  
+
   const [newRoom, setNewRoom] = useState<Partial<RoomCreate>>({
     name: '',
     waypoint_id: null,
@@ -60,7 +61,7 @@ export default function RoomsPage() {
       // Filter only room-type waypoints that are not linked
       setWaypoints(data.filter((w) => w.type === 'room'));
     } catch (error) {
-      console.error('Error fetching waypoints:', error);
+      logger.error('Error fetching waypoints', error);
     }
   };
 
@@ -161,7 +162,7 @@ export default function RoomsPage() {
                   onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label>Qavat *</Label>
                 <Select

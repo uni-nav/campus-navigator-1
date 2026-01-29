@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Server, MapPin, Save, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Server, MapPin, Save, CheckCircle, XCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -12,31 +12,35 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAppStore } from '@/lib/store';
-import { setApiUrl, getApiUrl, healthCheck, kiosksApi } from '@/lib/api/client';
-import type { Kiosk } from '@/lib/api/types';
+import { setApiUrl, getApiUrl, getAdminToken, setAdminToken, healthCheck, kiosksApi, navigationApi } from '@/lib/api/client';
+import type { Kiosk, MapAuditResponse } from '@/lib/api/types';
 import { toast } from 'sonner';
+import { logger } from '@/lib/logger';
 
 export default function SettingsPage() {
-  const { 
-    apiUrl, 
-    setApiUrl: setStoreApiUrl, 
-    kioskWaypointId, 
+  const {
+    apiUrl,
+    setApiUrl: setStoreApiUrl,
+    kioskWaypointId,
     setKioskWaypointId,
     isApiConnected,
     setIsApiConnected,
   } = useAppStore();
 
   const [localApiUrl, setLocalApiUrl] = useState(apiUrl || getApiUrl());
+  const [adminToken, setAdminTokenState] = useState(getAdminToken());
   const [testing, setTesting] = useState(false);
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [selectedKioskId, setSelectedKioskId] = useState<number | null>(null);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditResult, setAuditResult] = useState<MapAuditResponse | null>(null);
 
   const fetchKiosks = async () => {
     try {
       const data = await kiosksApi.getAll();
       setKiosks(data.sort((a, b) => a.name.localeCompare(b.name)));
     } catch (error) {
-      console.error('Error fetching kiosks:', error);
+      logger.error('Error fetching kiosks', error);
     }
   };
 
@@ -62,7 +66,7 @@ export default function SettingsPage() {
       setApiUrl(localApiUrl);
       const result = await healthCheck();
       setIsApiConnected(result);
-      
+
       if (result) {
         toast.success('API ulanishi muvaffaqiyatli');
       } else {
@@ -83,6 +87,11 @@ export default function SettingsPage() {
     handleTestConnection();
   };
 
+  const handleSaveAdminToken = () => {
+    setAdminToken(adminToken);
+    toast.success('Admin token saqlandi');
+  };
+
   const handleSaveKioskLocation = () => {
     toast.success('Kiosk joylashuvi saqlandi');
   };
@@ -100,6 +109,19 @@ export default function SettingsPage() {
     } else {
       setKioskWaypointId(null);
       toast.error('Tanlangan kiosk uchun nuqta belgilanmagan');
+    }
+  };
+
+  const handleAudit = async () => {
+    setAuditLoading(true);
+    try {
+      const result = await navigationApi.audit();
+      setAuditResult(result);
+      toast.success('Map audit tayyor');
+    } catch (error) {
+      toast.error("Map auditda xato");
+    } finally {
+      setAuditLoading(false);
     }
   };
 
@@ -133,8 +155,8 @@ export default function SettingsPage() {
                   onChange={(e) => setLocalApiUrl(e.target.value)}
                   className="flex-1"
                 />
-                <Button 
-                  variant="outline" 
+                <Button
+                  variant="outline"
                   onClick={handleTestConnection}
                   disabled={testing}
                 >
@@ -166,6 +188,20 @@ export default function SettingsPage() {
               <Save className="w-4 h-4" />
               Saqlash
             </Button>
+
+            <div className="space-y-2 pt-2">
+              <Label>Admin token</Label>
+              <Input
+                type="password"
+                placeholder="Bearer token"
+                value={adminToken}
+                onChange={(e) => setAdminTokenState(e.target.value)}
+              />
+              <Button onClick={handleSaveAdminToken} variant="outline" className="w-full gap-2">
+                <Save className="w-4 h-4" />
+                Tokenni saqlash
+              </Button>
+            </div>
           </div>
         </Card>
 
@@ -202,14 +238,81 @@ export default function SettingsPage() {
               </Select>
             </div>
 
-            <Button 
-              onClick={handleSaveKioskLocation} 
+            <Button
+              onClick={handleSaveKioskLocation}
               className="w-full gap-2"
               disabled={!selectedKioskId || !kioskWaypointId}
             >
               <Save className="w-4 h-4" />
               Saqlash
             </Button>
+          </div>
+        </Card>
+
+        {/* Map Audit */}
+        <Card className="p-6">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-foreground">Map Audit</h2>
+              <p className="text-sm text-muted-foreground">
+                Qavatlararo bog'lanishlar va uzilishlarni tekshirish
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <Button
+              onClick={handleAudit}
+              className="w-full gap-2"
+              disabled={!isApiConnected || auditLoading}
+            >
+              {auditLoading ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              Tekshirish
+            </Button>
+
+            {auditResult && (
+              <div className="space-y-3 rounded-lg bg-muted p-3 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>Qavatlar: {auditResult.summary.floors}</div>
+                  <div>Nuqtalar: {auditResult.summary.waypoints}</div>
+                  <div>Bog'lanishlar: {auditResult.summary.connections}</div>
+                  <div>Komponentlar: {auditResult.summary.components}</div>
+                </div>
+
+                {auditResult.summary.disconnected_floors.length > 0 && (
+                  <div className="text-amber-700">
+                    Uzilgan qavatlar:{' '}
+                    {auditResult.summary.disconnected_floors
+                      .map((f) => f.name || `ID ${f.id}`)
+                      .join(', ')}
+                  </div>
+                )}
+
+                {auditResult.summary.floors_with_no_waypoints.length > 0 && (
+                  <div className="text-amber-700">
+                    Nuqtasiz qavatlar:{' '}
+                    {auditResult.summary.floors_with_no_waypoints
+                      .map((f) => f.name || `ID ${f.id}`)
+                      .join(', ')}
+                  </div>
+                )}
+
+                {(auditResult.summary.legacy_one_way_links > 0 ||
+                  auditResult.summary.stairs_without_vertical_links > 0) && (
+                  <div className="text-destructive">
+                    Bir yo'nalish linklar: {auditResult.summary.legacy_one_way_links} •
+                    Vertikal link yo'q: {auditResult.summary.stairs_without_vertical_links}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </Card>
       </div>

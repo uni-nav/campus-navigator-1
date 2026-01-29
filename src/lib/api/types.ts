@@ -117,6 +117,52 @@ export interface NavigationResponse {
   estimated_time_minutes: number;
 }
 
+export interface MapAuditFloorInfo {
+  id: number;
+  floor_number: number | null;
+  name: string | null;
+}
+
+export interface MapAuditComponent {
+  component_id: number;
+  waypoint_count: number;
+  floor_ids: number[];
+  floor_numbers: number[];
+}
+
+export interface MapAuditIssue {
+  waypoint_id: string;
+  type?: string;
+  floor?: MapAuditFloorInfo;
+  connects_to_waypoint?: string;
+  issue?: string;
+}
+
+export interface MapAuditSummary {
+  floors: number;
+  waypoints: number;
+  connections: number;
+  components: number;
+  disconnected_floors: MapAuditFloorInfo[];
+  floors_with_no_waypoints: MapAuditFloorInfo[];
+  legacy_one_way_links: number;
+  stairs_without_vertical_links: number;
+}
+
+export interface MapAuditResponse {
+  summary: MapAuditSummary;
+  components: MapAuditComponent[];
+  issues: {
+    legacy_one_way_links: MapAuditIssue[];
+    stairs_without_vertical_links: MapAuditIssue[];
+    missing_waypoints_in_connections: Array<{
+      connection_id: string;
+      from_waypoint_id: string;
+      to_waypoint_id: string;
+    }>;
+  };
+}
+
 // Kiosk Types - Backend model: { id:number, name:string, floor_id:number, waypoint_id:string, description?:string }
 export interface Kiosk {
   id: number;

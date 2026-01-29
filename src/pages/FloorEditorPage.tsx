@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Canvas as FabricCanvas, Circle, Line, FabricImage } from 'fabric';
 import { 
@@ -69,6 +69,9 @@ export default function FloorEditorPage() {
   const [kiosks, setKiosks] = useState<Kiosk[]>([]);
   const [loading, setLoading] = useState(true);
   const [targetWaypoints, setTargetWaypoints] = useState<Waypoint[]>([]);
+  const [verticalFloorId, setVerticalFloorId] = useState<number | null>(null);
+  const [verticalTargetWaypoints, setVerticalTargetWaypoints] = useState<Waypoint[]>([]);
+  const [verticalTargetWaypointId, setVerticalTargetWaypointId] = useState<string>('');
 
   const {
     editorMode,
@@ -102,6 +105,37 @@ export default function FloorEditorPage() {
       };
     }
     return { x: rawX, y: rawY };
+  };
+
+  const verticalConnections = useMemo(() => {
+    if (!editingWaypoint) return [];
+    const floorWaypointIds = new Set(waypoints.map((wp) => wp.id));
+    return connections
+      .filter(
+        (conn) =>
+          conn.from_waypoint_id === editingWaypoint.id ||
+          conn.to_waypoint_id === editingWaypoint.id
+      )
+      .map((conn) => {
+        const otherId =
+          conn.from_waypoint_id === editingWaypoint.id
+            ? conn.to_waypoint_id
+            : conn.from_waypoint_id;
+        return {
+          conn,
+          otherId,
+          isSameFloor: floorWaypointIds.has(otherId),
+        };
+      })
+      .filter((item) => !item.isSameFloor);
+  }, [connections, editingWaypoint, waypoints]);
+
+  const getWaypointLabel = (id: string) => {
+    const local = waypoints.find((wp) => wp.id === id);
+    if (local) return local.label || local.id;
+    const target = verticalTargetWaypoints.find((wp) => wp.id === id);
+    if (target) return target.label || target.id;
+    return id;
   };
 
   const stopConnectionAnimation = useCallback(() => {
@@ -170,6 +204,24 @@ export default function FloorEditorPage() {
       .then((data) => setTargetWaypoints(data))
       .catch(() => setTargetWaypoints([]));
   }, [editingWaypoint?.connects_to_floor]);
+
+  useEffect(() => {
+    if (!verticalFloorId) {
+      setVerticalTargetWaypoints([]);
+      return;
+    }
+
+    waypointsApi
+      .getByFloor(verticalFloorId)
+      .then((data) => setVerticalTargetWaypoints(data))
+      .catch(() => setVerticalTargetWaypoints([]));
+  }, [verticalFloorId]);
+
+  useEffect(() => {
+    setVerticalFloorId(null);
+    setVerticalTargetWaypointId('');
+    setVerticalTargetWaypoints([]);
+  }, [editingWaypoint?.id]);
 
   // Initialize canvas
   useEffect(() => {
@@ -596,6 +648,54 @@ export default function FloorEditorPage() {
     }
   };
 
+  const handleAddVerticalConnection = async () => {
+    if (!editingWaypoint || !verticalFloorId || !verticalTargetWaypointId) return;
+
+    if (editingWaypoint.id === verticalTargetWaypointId) {
+      toast.error("Bir xil nuqtani bog'lab bo'lmaydi");
+      return;
+    }
+
+    const exists = connections.some(
+      (conn) =>
+        (conn.from_waypoint_id === editingWaypoint.id &&
+          conn.to_waypoint_id === verticalTargetWaypointId) ||
+        (conn.to_waypoint_id === editingWaypoint.id &&
+          conn.from_waypoint_id === verticalTargetWaypointId)
+    );
+    if (exists) {
+      toast.info("Bu bog'lanish allaqachon mavjud");
+      return;
+    }
+
+    const distance = editingWaypoint.type === 'elevator' ? 30 : 50;
+    const newConnection: ConnectionCreate = {
+      id: `conn_${Date.now()}`,
+      from_waypoint_id: editingWaypoint.id,
+      to_waypoint_id: verticalTargetWaypointId,
+      distance,
+    };
+
+    try {
+      const created = await connectionsApi.create(newConnection);
+      setConnections((prev) => [...prev, created]);
+      setVerticalTargetWaypointId('');
+      toast.success("Vertikal bog'lanish qo'shildi");
+    } catch (error) {
+      toast.error("Vertikal bog'lanish yaratishda xato");
+    }
+  };
+
+  const handleDeleteConnection = async (connectionId: string) => {
+    try {
+      await connectionsApi.delete(connectionId);
+      setConnections((prev) => prev.filter((conn) => conn.id !== connectionId));
+      toast.success("Bog'lanish o'chirildi");
+    } catch (error) {
+      toast.error("Bog'lanishni o'chirishda xato");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -888,6 +988,90 @@ export default function FloorEditorPage() {
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="pt-3 mt-2 border-t border-border space-y-3">
+                    <Label>Vertikal bog'lanishlar (ko'p)</Label>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs">Qavat</Label>
+                      <Select
+                        value={verticalFloorId?.toString() || ''}
+                        onValueChange={(value) => {
+                          setVerticalFloorId(value ? Number(value) : null);
+                          setVerticalTargetWaypointId('');
+                        }}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Qavatni tanlang" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {allFloors
+                            .filter((floorItem) => floorItem.id !== floor?.id)
+                            .map((floorItem) => (
+                              <SelectItem key={floorItem.id} value={floorItem.id.toString()}>
+                                {floorItem.name}
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-xs">Nuqta</Label>
+                      <Select
+                        value={verticalTargetWaypointId}
+                        onValueChange={(value) => setVerticalTargetWaypointId(value)}
+                        disabled={!verticalFloorId}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Nuqtani tanlang" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {verticalTargetWaypoints
+                            .filter(
+                              (wp) =>
+                                wp.type === editingWaypoint.type && wp.id !== editingWaypoint.id
+                            )
+                            .map((wp) => (
+                              <SelectItem key={wp.id} value={wp.id}>
+                                {wp.label || wp.id} ({wp.x}, {wp.y})
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={handleAddVerticalConnection}
+                      disabled={!verticalFloorId || !verticalTargetWaypointId}
+                    >
+                      Vertikal bog'lanish qo'shish
+                    </Button>
+
+                    {verticalConnections.length > 0 && (
+                      <div className="space-y-1">
+                        {verticalConnections.map(({ conn, otherId }) => (
+                          <div
+                            key={conn.id}
+                            className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1"
+                          >
+                            <span className="text-xs">{getWaypointLabel(otherId)}</span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleDeleteConnection(conn.id!)}
+                            >
+                              O'chirish
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
