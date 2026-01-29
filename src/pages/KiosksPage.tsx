@@ -115,9 +115,9 @@ export default function KiosksPage() {
   }
 
   return (
-    <div className="p-8 animate-fade-in">
+    <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Kiosklar</h1>
           <p className="text-muted-foreground mt-1">
@@ -144,6 +144,7 @@ export default function KiosksPage() {
                 <Label>Nomi</Label>
                 <Input
                   placeholder="Kiosk nomi"
+                  aria-label="Kiosk nomi"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
@@ -195,6 +196,7 @@ export default function KiosksPage() {
                 <Label>Tavsif (ixtiyoriy)</Label>
                 <Input
                   placeholder="Kiosk haqida ma'lumot"
+                  aria-label="Kiosk tavsifi"
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 />

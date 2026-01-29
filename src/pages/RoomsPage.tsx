@@ -135,8 +135,8 @@ export default function RoomsPage() {
   }
 
   return (
-    <div className="p-8 animate-fade-in">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Xonalar</h1>
           <p className="text-muted-foreground mt-1">Xonalarni boshqaring va nuqtalarga bog'lang</p>
@@ -158,6 +158,7 @@ export default function RoomsPage() {
                 <Label>Xona nomi *</Label>
                 <Input
                   placeholder="Masalan: 101-xona"
+                  aria-label="Xona nomi"
                   value={newRoom.name || ''}
                   onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
                 />
@@ -212,11 +213,12 @@ export default function RoomsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
+      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="relative flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Xonalarni qidirish..."
+            aria-label="Xona qidirish"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10"
@@ -226,7 +228,7 @@ export default function RoomsPage() {
           value={selectedFloorId?.toString() || 'all'}
           onValueChange={(value) => setSelectedFloorId(value === 'all' ? null : parseInt(value))}
         >
-          <SelectTrigger className="w-48">
+          <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="Barcha qavatlar" />
           </SelectTrigger>
           <SelectContent>

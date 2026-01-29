@@ -1,16 +1,12 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { Floor, Waypoint, Connection, Room } from './api/types';
+import { Waypoint } from './api/types';
 import { config } from './config';
 
 interface AppState {
   // API Settings
   apiUrl: string;
   setApiUrl: (url: string) => void;
-
-  // Kiosk Settings
-  kioskWaypointId: string | null;
-  setKioskWaypointId: (id: string | null) => void;
 
   // Selected Floor
   selectedFloorId: number | null;
@@ -43,10 +39,6 @@ export const useAppStore = create<AppState>()(
       apiUrl: config.apiUrl,
       setApiUrl: (url) => set({ apiUrl: url }),
 
-      // Kiosk Settings
-      kioskWaypointId: null,
-      setKioskWaypointId: (id) => set({ kioskWaypointId: id }),
-
       // Selected Floor
       selectedFloorId: null,
       setSelectedFloorId: (id) => set({ selectedFloorId: id }),
@@ -74,7 +66,6 @@ export const useAppStore = create<AppState>()(
       name: 'university-nav-storage',
       partialize: (state) => ({
         apiUrl: state.apiUrl,
-        kioskWaypointId: state.kioskWaypointId,
       }),
     }
   )

@@ -25,10 +25,28 @@ export default function FloorsPage() {
   const navigate = useNavigate();
 
   const resolveMediaUrl = (url: string) => {
-    if (!url) return url;
-    if (/^https?:\/\//i.test(url)) return url;
-    const base = getApiUrl().replace(/\/$/, '');
-    const path = url.startsWith('/') ? url : `/${url}`;
+    if (!url) return '';
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        const parsed = new URL(url);
+        if (parsed.pathname.startsWith('/api/uploads/')) {
+          const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+          return `${base}${parsed.pathname.replace(/^\/api/, '')}`;
+        }
+        if (parsed.pathname.startsWith('/uploads/')) {
+          const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+          return `${base}${parsed.pathname}`;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      return url;
+    }
+    const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+    const rawPath = url.startsWith('/') ? url : `/${url}`;
+    const path = rawPath.startsWith('/api/uploads/')
+      ? rawPath.replace(/^\/api/, '')
+      : rawPath;
     return `${base}${path}`;
   };
 
@@ -95,8 +113,8 @@ export default function FloorsPage() {
   }
 
   return (
-    <div className="p-8 animate-fade-in">
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Qavatlar</h1>
           <p className="text-muted-foreground mt-1">Bino qavatlarini boshqaring</p>
@@ -118,6 +136,7 @@ export default function FloorsPage() {
                 <Label>Qavat nomi</Label>
                 <Input
                   placeholder="Masalan: 1-qavat"
+                  aria-label="Qavat nomi"
                   value={newFloor.name}
                   onChange={(e) => setNewFloor({ ...newFloor, name: e.target.value })}
                 />
@@ -126,6 +145,7 @@ export default function FloorsPage() {
                 <Label>Qavat raqami</Label>
                 <Input
                   type="number"
+                  aria-label="Qavat raqami"
                   value={newFloor.floor_number}
                   onChange={(e) => setNewFloor({ ...newFloor, floor_number: parseInt(e.target.value) || 1 })}
                 />

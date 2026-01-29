@@ -1,28 +1,18 @@
-import { useState, useEffect } from 'react';
-import { Server, MapPin, Save, CheckCircle, XCircle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useState } from 'react';
+import { Server, Save, CheckCircle, XCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { useAppStore } from '@/lib/store';
-import { setApiUrl, getApiUrl, getAdminToken, setAdminToken, healthCheck, kiosksApi, navigationApi } from '@/lib/api/client';
-import type { Kiosk, MapAuditResponse } from '@/lib/api/types';
+import { setApiUrl, getApiUrl, getAdminToken, setAdminToken, healthCheck, navigationApi } from '@/lib/api/client';
+import type { MapAuditResponse } from '@/lib/api/types';
 import { toast } from 'sonner';
-import { logger } from '@/lib/logger';
 
 export default function SettingsPage() {
   const {
     apiUrl,
     setApiUrl: setStoreApiUrl,
-    kioskWaypointId,
-    setKioskWaypointId,
     isApiConnected,
     setIsApiConnected,
   } = useAppStore();
@@ -30,34 +20,8 @@ export default function SettingsPage() {
   const [localApiUrl, setLocalApiUrl] = useState(apiUrl || getApiUrl());
   const [adminToken, setAdminTokenState] = useState(getAdminToken());
   const [testing, setTesting] = useState(false);
-  const [kiosks, setKiosks] = useState<Kiosk[]>([]);
-  const [selectedKioskId, setSelectedKioskId] = useState<number | null>(null);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditResult, setAuditResult] = useState<MapAuditResponse | null>(null);
-
-  const fetchKiosks = async () => {
-    try {
-      const data = await kiosksApi.getAll();
-      setKiosks(data.sort((a, b) => a.name.localeCompare(b.name)));
-    } catch (error) {
-      logger.error('Error fetching kiosks', error);
-    }
-  };
-
-  useEffect(() => {
-    if (isApiConnected) {
-      fetchKiosks();
-    }
-  }, [isApiConnected]);
-
-  useEffect(() => {
-    if (!kioskWaypointId) {
-      setSelectedKioskId(null);
-      return;
-    }
-    const match = kiosks.find((kiosk) => kiosk.waypoint_id === kioskWaypointId);
-    if (match) setSelectedKioskId(match.id);
-  }, [kioskWaypointId, kiosks]);
 
   const handleTestConnection = async () => {
     setTesting(true);
@@ -92,26 +56,6 @@ export default function SettingsPage() {
     toast.success('Admin token saqlandi');
   };
 
-  const handleSaveKioskLocation = () => {
-    toast.success('Kiosk joylashuvi saqlandi');
-  };
-
-  const handleSelectKiosk = (value: string) => {
-    const kioskId = parseInt(value, 10);
-    setSelectedKioskId(kioskId);
-    const kiosk = kiosks.find((item) => item.id === kioskId);
-    if (!kiosk) {
-      setKioskWaypointId(null);
-      return;
-    }
-    if (kiosk.waypoint_id) {
-      setKioskWaypointId(kiosk.waypoint_id);
-    } else {
-      setKioskWaypointId(null);
-      toast.error('Tanlangan kiosk uchun nuqta belgilanmagan');
-    }
-  };
-
   const handleAudit = async () => {
     setAuditLoading(true);
     try {
@@ -126,7 +70,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-8 max-w-2xl animate-fade-in">
+    <div className="p-4 sm:p-6 lg:p-8 max-w-2xl animate-fade-in">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-foreground">Sozlamalar</h1>
         <p className="text-muted-foreground mt-1">API va qurilma sozlamalari</p>
@@ -151,6 +95,7 @@ export default function SettingsPage() {
               <div className="flex gap-2">
                 <Input
                   placeholder="http://localhost:8000"
+                  aria-label="API manzili"
                   value={localApiUrl}
                   onChange={(e) => setLocalApiUrl(e.target.value)}
                   className="flex-1"
@@ -194,6 +139,7 @@ export default function SettingsPage() {
               <Input
                 type="password"
                 placeholder="Bearer token"
+                aria-label="Admin token"
                 value={adminToken}
                 onChange={(e) => setAdminTokenState(e.target.value)}
               />
@@ -202,50 +148,6 @@ export default function SettingsPage() {
                 Tokenni saqlash
               </Button>
             </div>
-          </div>
-        </Card>
-
-        {/* Kiosk Location Settings */}
-        <Card className="p-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-              <MapPin className="w-5 h-5 text-primary" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-foreground">Kiosk joylashuvi</h2>
-              <p className="text-sm text-muted-foreground">Navigatsiya boshlanish nuqtasi</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Kiosk</Label>
-              <Select
-                value={selectedKioskId?.toString() || ''}
-                onValueChange={handleSelectKiosk}
-                disabled={!isApiConnected || kiosks.length === 0}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Kioskni tanlang" />
-                </SelectTrigger>
-                <SelectContent>
-                  {kiosks.map((kiosk) => (
-                    <SelectItem key={kiosk.id} value={kiosk.id.toString()}>
-                      {kiosk.name} — Qavat {kiosk.floor_id}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <Button
-              onClick={handleSaveKioskLocation}
-              className="w-full gap-2"
-              disabled={!selectedKioskId || !kioskWaypointId}
-            >
-              <Save className="w-4 h-4" />
-              Saqlash
-            </Button>
           </div>
         </Card>
 

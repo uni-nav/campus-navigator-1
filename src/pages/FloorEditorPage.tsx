@@ -251,9 +251,27 @@ export default function FloorEditorPage() {
     }
 
     const resolveMediaUrl = (url: string) => {
-      if (/^https?:\/\//i.test(url)) return url;
-      const base = getApiUrl().replace(/\/$/, '');
-      const path = url.startsWith('/') ? url : `/${url}`;
+      if (/^https?:\/\//i.test(url)) {
+        try {
+          const parsed = new URL(url);
+          if (parsed.pathname.startsWith('/api/uploads/')) {
+            const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+            return `${base}${parsed.pathname.replace(/^\/api/, '')}`;
+          }
+          if (parsed.pathname.startsWith('/uploads/')) {
+            const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+            return `${base}${parsed.pathname}`;
+          }
+        } catch {
+          // ignore parse errors
+        }
+        return url;
+      }
+      const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+      const rawPath = url.startsWith('/') ? url : `/${url}`;
+      const path = rawPath.startsWith('/api/uploads/')
+        ? rawPath.replace(/^\/api/, '')
+        : rawPath;
       return `${base}${path}`;
     };
 
@@ -715,8 +733,8 @@ export default function FloorEditorPage() {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="p-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           <Button variant="ghost" size="icon" onClick={() => navigate('/floors')}>
             <ArrowLeft className="w-5 h-5" />
           </Button>
@@ -729,7 +747,7 @@ export default function FloorEditorPage() {
         </div>
 
         {/* Zoom Controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center flex-wrap gap-2">
           <Button variant="outline" size="icon" onClick={handleZoomOut}>
             <ZoomOut className="w-4 h-4" />
           </Button>
@@ -745,9 +763,9 @@ export default function FloorEditorPage() {
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Toolbar */}
-        <div className="w-72 border-r border-border p-4 space-y-6 overflow-y-auto">
+        <div className="w-full lg:w-72 border-b lg:border-b-0 lg:border-r border-border p-4 space-y-6 overflow-y-auto max-h-[40vh] lg:max-h-none">
           {/* Mode Selection */}
           <div className="space-y-3">
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">
@@ -869,15 +887,15 @@ export default function FloorEditorPage() {
         </div>
 
         {/* Canvas Container */}
-        <div className="flex-1 p-4 overflow-auto bg-muted/30">
-          <div className="canvas-container inline-block">
+        <div className="flex-1 p-4 overflow-auto bg-muted/30 min-h-[45vh] lg:min-h-0">
+          <div className="canvas-container w-full max-w-full">
             <canvas ref={canvasRef} />
           </div>
         </div>
 
         {/* Properties Panel */}
         {editingWaypoint && (
-          <div className="w-80 border-l border-border p-4 space-y-4 overflow-y-auto">
+          <div className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-border p-4 space-y-4 overflow-y-auto max-h-[45vh] lg:max-h-none">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold">Nuqta sozlamalari</h3>
               <Button
@@ -894,6 +912,7 @@ export default function FloorEditorPage() {
                 <Label>Yorliq</Label>
                 <Input
                   value={editingWaypoint.label || ''}
+                  aria-label="Nuqta yorlig'i"
                   onChange={(e) =>
                     setEditingWaypoint({ ...editingWaypoint, label: e.target.value })
                   }
@@ -931,11 +950,11 @@ export default function FloorEditorPage() {
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2">
                   <Label>X</Label>
-                  <Input value={editingWaypoint.x} disabled />
+                  <Input value={editingWaypoint.x} aria-label="Nuqta X koordinata" disabled />
                 </div>
                 <div className="space-y-2">
                   <Label>Y</Label>
-                  <Input value={editingWaypoint.y} disabled />
+                  <Input value={editingWaypoint.y} aria-label="Nuqta Y koordinata" disabled />
                 </div>
               </div>
 

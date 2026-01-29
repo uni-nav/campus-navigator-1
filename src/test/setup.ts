@@ -26,3 +26,13 @@ global.console = {
     error: vi.fn(),
     warn: vi.fn(),
 };
+
+// Minimal ResizeObserver mock for layout-related components
+class ResizeObserverMock {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+}
+
+// @ts-expect-error - allow global assignment in test env
+global.ResizeObserver = ResizeObserverMock;

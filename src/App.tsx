@@ -12,6 +12,7 @@ import { FeedbackWidget } from "@/components/FeedbackWidget";
 const FloorEditorPage = lazy(() => import("./pages/FloorEditorPage"));
 const PublicNavigationPage = lazy(() => import("./pages/PublicNavigationPage"));
 const NavigationPage = lazy(() => import("./pages/NavigationPage"));
+const KioskLauncherPage = lazy(() => import("./pages/KioskLauncherPage"));
 
 // Regular imports for lighter pages
 import FloorsPage from "./pages/FloorsPage";
@@ -50,6 +51,11 @@ const App = () => (
               <Route path="/waypoints" element={<WaypointsPage />} />
               <Route path="/rooms" element={<RoomsPage />} />
               <Route path="/kiosks" element={<KiosksPage />} />
+              <Route path="/kiosk-launch" element={
+                <Suspense fallback={<PageLoader />}>
+                  <KioskLauncherPage />
+                </Suspense>
+              } />
               <Route path="/navigation" element={
                 <Suspense fallback={<PageLoader />}>
                   <NavigationPage />

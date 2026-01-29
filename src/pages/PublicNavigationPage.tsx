@@ -42,9 +42,27 @@ type AnimationState = 'active' | 'pending' | 'completed';
 
 const resolveMediaUrl = (url: string | null) => {
   if (!url) return null;
-  if (/^https?:\/\//i.test(url)) return url;
-  const base = getApiUrl().replace(/\/$/, '');
-  const path = url.startsWith('/') ? url : `/${url}`;
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.pathname.startsWith('/api/uploads/')) {
+        const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+        return `${base}${parsed.pathname.replace(/^\/api/, '')}`;
+      }
+      if (parsed.pathname.startsWith('/uploads/')) {
+        const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+        return `${base}${parsed.pathname}`;
+      }
+    } catch {
+      // ignore parse errors
+    }
+    return url;
+  }
+  const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
+  const rawPath = url.startsWith('/') ? url : `/${url}`;
+  const path = rawPath.startsWith('/api/uploads/')
+    ? rawPath.replace(/^\/api/, '')
+    : rawPath;
   return `${base}${path}`;
 };
 
@@ -199,24 +217,48 @@ const AnimatedPathCanvas = ({
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
-      if (!image) {
-        ctx.fillStyle = '#0f172a';
-        ctx.fillRect(0, 0, width, height);
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '16px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.fillText(title, width / 2, height / 2 - 12);
-        ctx.fillText('Rasm yuklanmagan', width / 2, height / 2 + 12);
-        return;
-      }
+      const getFrame = () => {
+        if (image?.width && image.height) {
+          return { width: image.width, height: image.height, offsetX: 0, offsetY: 0 };
+        }
+        if (floor?.image_width && floor.image_height) {
+          return { width: floor.image_width, height: floor.image_height, offsetX: 0, offsetY: 0 };
+        }
+        if (steps.length > 0) {
+          const xs = steps.map((step) => step.x);
+          const ys = steps.map((step) => step.y);
+          const minX = Math.min(...xs);
+          const maxX = Math.max(...xs);
+          const minY = Math.min(...ys);
+          const maxY = Math.max(...ys);
+          return {
+            width: Math.max(1, maxX - minX),
+            height: Math.max(1, maxY - minY),
+            offsetX: minX,
+            offsetY: minY,
+          };
+        }
+        return { width: 1000, height: 800, offsetX: 0, offsetY: 0 };
+      };
 
-      const scale = Math.min(width / image.width, height / image.height) * 0.92;
-      const imageWidth = image.width * scale;
-      const imageHeight = image.height * scale;
+      const frame = getFrame();
+      const scale = Math.min(width / frame.width, height / frame.height) * 0.92;
+      const imageWidth = frame.width * scale;
+      const imageHeight = frame.height * scale;
       const offsetX = (width - imageWidth) / 2;
       const offsetY = (height - imageHeight) / 2;
 
-      ctx.drawImage(image, offsetX, offsetY, imageWidth, imageHeight);
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, width, height);
+
+      if (image) {
+        ctx.drawImage(image, offsetX, offsetY, imageWidth, imageHeight);
+      } else {
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('Rasm yuklanmagan', width / 2, height / 2 - 6);
+      }
 
       const hasPoi = poi.length > 0;
       const hasOverlayContent = steps.length > 0 || hasPoi || startPoint || endPoint;
@@ -232,8 +274,8 @@ const AnimatedPathCanvas = ({
       }
 
       const toCanvas = (point: CanvasPoint) => ({
-        x: offsetX + point.x * scale,
-        y: offsetY + point.y * scale,
+        x: offsetX + (point.x - frame.offsetX) * scale,
+        y: offsetY + (point.y - frame.offsetY) * scale,
       });
 
       const points = steps.map((step) => toCanvas({ x: step.x, y: step.y }));
@@ -967,7 +1009,8 @@ export default function PublicNavigationPage() {
       });
       setNavigationResult(response);
     } catch {
-      toast.error('Yo‘l topilmadi');
+      const startName = kioskConfig?.name || 'Kiosk';
+      toast.error(`${startName} dan ${room.name} ga yo'l topilmadi. Iltimos, boshqa xonani tanlang.`);
       setNavigationResult(null);
     } finally {
       setIsLoading(false);
@@ -1028,7 +1071,9 @@ export default function PublicNavigationPage() {
       <div
         className={cn(
           'absolute inset-0 grid h-full gap-4 p-4',
-          splitView ? 'grid-cols-2 grid-rows-1' : 'grid-cols-1 grid-rows-1'
+          splitView
+            ? 'grid-cols-1 grid-rows-2 lg:grid-cols-2 lg:grid-rows-1'
+            : 'grid-cols-1 grid-rows-1'
         )}
       >
         {displayRuns.map(({ run, runIndex }, slotIndex) => {
@@ -1110,7 +1155,7 @@ export default function PublicNavigationPage() {
           return (
             <div
               key={`${floorId}-${runIndex}`}
-              className="relative h-full min-h-0 rounded-2xl overflow-hidden border border-white/10 bg-black/80"
+              className="relative h-full min-h-[35vh] lg:min-h-0 rounded-2xl overflow-hidden border border-white/10 bg-black/80"
             >
               <AnimatedPathCanvas
                 floor={floor}
@@ -1144,8 +1189,8 @@ export default function PublicNavigationPage() {
         </div>
       )}
 
-      <div className="relative z-10 flex items-start justify-between p-6 gap-6">
-        <Card className="w-full max-w-sm bg-black/70 border-white/10 text-white">
+      <div className="relative z-10 flex flex-col lg:flex-row lg:items-start lg:justify-between p-4 sm:p-6 gap-4 lg:gap-6">
+        <Card className="w-full max-w-full lg:max-w-sm bg-black/70 border-white/10 text-white">
           <div className="p-4 space-y-3">
             <div className="flex items-center gap-2 text-lg font-semibold">
               <Navigation className="w-5 h-5 text-cyan-300" />
@@ -1155,6 +1200,7 @@ export default function PublicNavigationPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/60" />
               <Input
                 placeholder="Xonani tanlang..."
+                aria-label="Xona qidirish"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 disabled={!isKioskReady}
@@ -1193,7 +1239,7 @@ export default function PublicNavigationPage() {
           </div>
         </Card>
 
-        <Card className="bg-black/70 border-white/10 text-white min-w-[220px]">
+        <Card className="bg-black/70 border-white/10 text-white w-full lg:min-w-[220px] lg:w-auto">
           <div className="p-4 space-y-3">
             <div className="text-xs text-white/60">Qavatlar</div>
             <div className="text-lg font-semibold">
@@ -1237,7 +1283,7 @@ export default function PublicNavigationPage() {
             className="w-full max-w-lg mx-6 bg-black/80 border-white/10 text-white"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="p-8 text-center space-y-4">
+            <div className="p-6 sm:p-8 text-center space-y-4">
               <div className="text-2xl font-semibold">Xush kelibsiz!</div>
               <div className="text-sm text-white/70">
                 Yo‘l topish uchun ekranga teging
