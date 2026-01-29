@@ -9,7 +9,7 @@ import type { Floor, Kiosk, NavigationResponse, PathStep, Room, Waypoint } from 
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-const ANIMATION_SPEED = 60; // px per second in canvas space
+const ANIMATION_SPEED = 70; // px per second in canvas space (match admin navigation)
 const IDLE_TIMEOUT_MS = 300_000;
 const CACHE_PREFIX = 'kiosk_cache_v1';
 const CACHE_MAX_AGE_MS = 1000 * 60 * 60 * 24; // 24h
@@ -301,25 +301,66 @@ const AnimatedPathCanvas = ({
         ctx.closePath();
       };
 
-      const drawKioskMarker = (point: CanvasPoint) => {
-        const width = 30;
-        const height = 20;
+      const drawLabel = (
+        text: string,
+        x: number,
+        y: number,
+        {
+          fontSize = 12,
+          fill = '#f8fafc',
+          background = 'rgba(15,23,42,0.68)',
+          stroke = 'rgba(255,255,255,0.12)',
+        }: { fontSize?: number; fill?: string; background?: string; stroke?: string } = {}
+      ) => {
         ctx.save();
-        const ringRadius = 16 + pulse * 6;
+        ctx.font = `600 ${fontSize}px "Plus Jakarta Sans", "Inter", sans-serif`;
+        const metrics = ctx.measureText(text);
+        const textWidth = Math.ceil(metrics.width);
+        const textHeight = fontSize + 6;
+        const padX = 6;
+        const padY = 3;
+        drawRoundedRect(x - padX, y - textHeight + padY, textWidth + padX * 2, textHeight + padY, 4);
+        ctx.fillStyle = background;
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 1;
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = fill;
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(text, x, y);
+        ctx.restore();
+      };
+
+      const drawKioskMarker = (point: CanvasPoint) => {
+        ctx.save();
+        const ringRadius = 12 + pulse * 6;
         ctx.beginPath();
-        ctx.strokeStyle = `rgba(34, 197, 94, ${0.45 - pulse * 0.2})`;
+        ctx.strokeStyle = 'rgba(14,165,233,0.8)';
         ctx.lineWidth = 2;
         ctx.arc(point.x, point.y, ringRadius, 0, Math.PI * 2);
         ctx.stroke();
-        ctx.fillStyle = '#22c55e';
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 2;
-        ctx.shadowColor = 'rgba(34, 197, 94, 0.8)';
+        ctx.beginPath();
+        ctx.fillStyle = 'rgba(14,165,233,0.15)';
+        ctx.arc(point.x, point.y, ringRadius - 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.shadowColor = 'rgba(14,165,233,0.6)';
         ctx.shadowBlur = 12;
-        drawRoundedRect(point.x - width / 2, point.y - height / 2, width, height, 4);
+        ctx.beginPath();
+        ctx.fillStyle = '#0ea5e9';
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineWidth = 2;
+        ctx.arc(point.x, point.y, 5, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         ctx.restore();
+        drawLabel('Kiosk', point.x + 12, point.y - 8, {
+          fontSize: 11,
+          fill: '#bae6fd',
+          background: 'rgba(2,132,199,0.35)',
+          stroke: 'rgba(186,230,253,0.3)',
+        });
       };
 
       const drawDestinationMarker = (point: CanvasPoint, pulseValue: number) => {
@@ -366,12 +407,17 @@ const AnimatedPathCanvas = ({
 
       let drawLength = 0;
       if (points.length > 0) {
-        // Path background (soft glow base)
+        const totalLength = computeLength(points);
+        drawLength = progress === null ? totalLength : Math.min(progress, totalLength);
+
+        // Path (dotted, animated dash)
         ctx.save();
-        ctx.strokeStyle = 'rgba(64, 82, 90, 0.25)';
-        ctx.lineWidth = 12;
+        ctx.strokeStyle = '#22C55E';
+        ctx.lineWidth = 4;
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
+        ctx.setLineDash([2, 10]);
+        ctx.lineDashOffset = -drawLength * 0.25;
         ctx.beginPath();
         points.forEach((p, idx) => {
           if (idx === 0) ctx.moveTo(p.x, p.y);
@@ -380,47 +426,16 @@ const AnimatedPathCanvas = ({
         ctx.stroke();
         ctx.restore();
 
-        const totalLength = computeLength(points);
-        drawLength = progress === null ? totalLength : Math.min(progress, totalLength);
-
-        // Foreground path (animated, glowing)
-        ctx.save();
-        ctx.strokeStyle = '#7DD3FC';
-        ctx.lineWidth = 6;
-        ctx.shadowColor = 'rgba(56, 189, 248, 0.9)';
-        ctx.shadowBlur = 16;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        if (points.length > 0) {
-          ctx.moveTo(points[0].x, points[0].y);
-          let remaining = drawLength;
-          for (let i = 1; i < points.length; i += 1) {
-            const a = points[i - 1];
-            const b = points[i];
-            const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-            if (segLen === 0) continue;
-            if (remaining <= segLen) {
-              const t = remaining / segLen;
-              ctx.lineTo(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-              break;
-            }
-            ctx.lineTo(b.x, b.y);
-            remaining -= segLen;
-          }
-        }
-        ctx.stroke();
-        ctx.restore();
-
-        // Step points
-        points.forEach((p) => {
+        // Path dots (like admin navigation)
+        const maxDots = 60;
+        const step = Math.max(1, Math.ceil(points.length / maxDots));
+        points.forEach((p, idx) => {
+          if (idx === 0 || idx === points.length - 1) return;
+          if (idx % step !== 0) return;
           ctx.beginPath();
-          ctx.fillStyle = '#0ea5e9';
-          ctx.strokeStyle = '#0f172a';
-          ctx.lineWidth = 1.5;
-          ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
+          ctx.fillStyle = '#a7f3d0';
+          ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
           ctx.fill();
-          ctx.stroke();
         });
       }
 
@@ -450,49 +465,78 @@ const AnimatedPathCanvas = ({
       );
 
       if (startCanvas) drawKioskMarker(startCanvas);
-      if (endCanvas) drawDestinationMarker(endCanvas, pulse);
+      if (endCanvas) {
+        ctx.beginPath();
+        ctx.fillStyle = '#22C55E';
+        ctx.strokeStyle = '#0f172a';
+        ctx.lineWidth = 2;
+        ctx.arc(endCanvas.x, endCanvas.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        drawLabel('Maqsad', endCanvas.x + 10, endCanvas.y + 6, {
+          fontSize: 11,
+          fill: '#dcfce7',
+          background: 'rgba(20,83,45,0.5)',
+          stroke: 'rgba(134,239,172,0.3)',
+        });
+      }
 
       if (poiPoints.length > 0) {
         poiPoints.forEach((point) => {
-          const baseRadius = point.type === 'stairs' ? 6 : 5;
-          const pulseRadius = baseRadius + pulse * 2.5;
-          const color = point.type === 'stairs' ? '#F59E0B' : '#38BDF8';
-          ctx.beginPath();
-          ctx.fillStyle = color;
-          ctx.strokeStyle = '#0f172a';
-          ctx.lineWidth = 1.5;
-          ctx.arc(point.x, point.y, pulseRadius, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-
-          ctx.save();
-          ctx.fillStyle = '#E2E8F0';
-          ctx.font = '12px sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'bottom';
-          ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-          ctx.shadowBlur = 4;
-          ctx.fillText(point.label, point.x, point.y - 10);
-          ctx.restore();
+          if (point.type === 'stairs') {
+            const baseRadius = 6;
+            const pulseRadius = baseRadius + pulse * 2.5;
+            ctx.beginPath();
+            ctx.fillStyle = '#F59E0B';
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 1.5;
+            ctx.arc(point.x, point.y, pulseRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            drawLabel(point.label, point.x + 10, point.y + 6, {
+              fontSize: 11,
+              fill: '#fde68a',
+              background: 'rgba(120,53,15,0.55)',
+              stroke: 'rgba(253,230,138,0.3)',
+            });
+            return;
+          }
+          // Room label only
+          drawLabel(point.label, point.x + 10, point.y + 6, {
+            fontSize: 12,
+            fill: '#e2e8f0',
+            background: 'rgba(15,23,42,0.65)',
+            stroke: 'rgba(255,255,255,0.12)',
+          });
         });
       }
 
       // Moving person icon
       if (showMover && points.length >= 2 && progress !== null) {
         const mover = getPointAtLength(points, drawLength);
-        const icon = moverIconRef.current;
-        const size = 26;
-        if (icon && icon.complete) {
-          ctx.drawImage(icon, mover.x - size / 2, mover.y - size / 2, size, size);
-        } else {
-          ctx.beginPath();
-          ctx.fillStyle = '#f97316';
-          ctx.strokeStyle = '#0f172a';
-          ctx.lineWidth = 2;
-          ctx.arc(mover.x, mover.y, 7, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.stroke();
-        }
+        // Admin navigation style: head + body group
+        ctx.save();
+        ctx.shadowColor = 'rgba(56,189,248,0.6)';
+        ctx.shadowBlur = 12;
+
+        // Body
+        ctx.fillStyle = '#38bdf8';
+        ctx.strokeStyle = '#f8fafc';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(mover.x - 4.5, mover.y + 4 - 6, 9, 12, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        // Head
+        ctx.beginPath();
+        ctx.fillStyle = '#f8fafc';
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.5;
+        ctx.arc(mover.x, mover.y - 6, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
       }
     },
     [endPoint, markers, poi, showEmptyState, showMover, startPoint, steps, syncCanvasSize, title]
@@ -700,6 +744,7 @@ export default function PublicNavigationPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [floors, setFloors] = useState<Floor[]>([]);
   const [kioskWaypoints, setKioskWaypoints] = useState<Waypoint[]>([]);
+  const [waypointsByFloor, setWaypointsByFloor] = useState<Record<number, Waypoint[]>>({});
   const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Room[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
@@ -828,6 +873,7 @@ export default function PublicNavigationPage() {
       .then((data) => {
         if (isActive) {
           setKioskWaypoints(data);
+          setWaypointsByFloor((prev) => ({ ...prev, [kioskFloorId]: data }));
           saveCache(`waypoints:${kioskFloorId}`, data);
           clearOffline();
         }
@@ -837,6 +883,7 @@ export default function PublicNavigationPage() {
           const cachedWaypoints = loadCache<Waypoint[]>(`waypoints:${kioskFloorId}`);
           if (cachedWaypoints) {
             setKioskWaypoints(cachedWaypoints);
+            setWaypointsByFloor((prev) => ({ ...prev, [kioskFloorId]: cachedWaypoints }));
             notifyOffline();
           } else {
             setKioskWaypoints([]);
@@ -847,6 +894,32 @@ export default function PublicNavigationPage() {
       isActive = false;
     };
   }, [kioskFloorId, clearOffline, notifyOffline]);
+
+  useEffect(() => {
+    const floorIds = new Set<number>();
+    if (navigationResult) {
+      navigationResult.path.forEach((step) => floorIds.add(step.floor_id));
+    } else if (kioskFloorId) {
+      floorIds.add(kioskFloorId);
+    }
+    floorIds.forEach((floorId) => {
+      if (waypointsByFloor[floorId]) return;
+      waypointsApi
+        .getByFloor(floorId)
+        .then((data) => {
+          setWaypointsByFloor((prev) => ({ ...prev, [floorId]: data }));
+          saveCache(`waypoints:${floorId}`, data);
+          clearOffline();
+        })
+        .catch(() => {
+          const cached = loadCache<Waypoint[]>(`waypoints:${floorId}`);
+          if (cached) {
+            setWaypointsByFloor((prev) => ({ ...prev, [floorId]: cached }));
+            notifyOffline();
+          }
+        });
+    });
+  }, [navigationResult, kioskFloorId, waypointsByFloor, clearOffline, notifyOffline]);
 
   useEffect(() => {
     if (!query.trim()) {
@@ -977,20 +1050,40 @@ export default function PublicNavigationPage() {
   const defaultPoi = useMemo(() => {
     if (!kioskFloorId) return [];
     const poiList: Poi[] = [];
-    rooms
-      .filter((room) => room.floor_id === kioskFloorId && room.waypoint_id)
-      .forEach((room) => {
-        const wp = room.waypoint_id ? waypointMap.get(room.waypoint_id) : null;
-        if (!wp) return;
-        poiList.push({ x: wp.x, y: wp.y, label: room.name, type: 'room' });
-      });
     kioskWaypoints
       .filter((wp) => wp.type === 'stairs')
       .forEach((wp) => {
         poiList.push({ x: wp.x, y: wp.y, label: 'Zina', type: 'stairs' });
       });
     return poiList;
-  }, [kioskFloorId, rooms, waypointMap, kioskWaypoints]);
+  }, [kioskFloorId, kioskWaypoints]);
+
+  const getRoomPoiForFloor = useCallback(
+    (floorId: number) => {
+      const waypoints = waypointsByFloor[floorId] || [];
+      if (waypoints.length === 0) return [] as Poi[];
+      const map = new Map(waypoints.map((wp) => [wp.id, wp]));
+      return rooms
+        .filter((room) => room.floor_id === floorId && room.waypoint_id)
+        .flatMap((room) => {
+          const wp = room.waypoint_id ? map.get(room.waypoint_id) : null;
+          if (!wp) return [];
+          return [{ x: wp.x, y: wp.y, label: room.name, type: 'room' as const }];
+        });
+    },
+    [rooms, waypointsByFloor]
+  );
+
+  const getStairsPoiForFloor = useCallback(
+    (floorId: number) => {
+      const waypoints = waypointsByFloor[floorId] || [];
+      if (waypoints.length === 0) return [] as Poi[];
+      return waypoints
+        .filter((wp) => wp.type === 'stairs')
+        .map((wp) => ({ x: wp.x, y: wp.y, label: 'Zina', type: 'stairs' as const }));
+    },
+    [waypointsByFloor]
+  );
 
   const handleSelectRoom = async (room: Room) => {
     if (!isKioskReady) {
@@ -1143,6 +1236,14 @@ export default function PublicNavigationPage() {
             }
           }
           const showDefaultPoi = !navigationResult && floorId === kioskFloorId;
+          const roomPoi = getRoomPoiForFloor(floorId);
+          const stairsPoi = getStairsPoiForFloor(floorId);
+          const mergedPoi =
+            roomPoi.length > 0 || stairsPoi.length > 0
+              ? [...roomPoi, ...stairsPoi]
+              : showDefaultPoi
+                ? defaultPoi
+                : EMPTY_POI;
           const animationState: AnimationState = navigationResult
             ? splitView
               ? runIndex < activeRunIndex
@@ -1167,7 +1268,7 @@ export default function PublicNavigationPage() {
                 showEmptyState={Boolean(navigationResult)}
                 animationState={animationState}
                 showMover={animationState === 'active'}
-                poi={showDefaultPoi ? defaultPoi : EMPTY_POI}
+                poi={mergedPoi}
                 animateStatic={showDefaultPoi}
                 onComplete={
                   splitView && animationState === 'active' && runIndex >= 0
