@@ -23,6 +23,9 @@ import { Room, RoomCreate, Floor, Waypoint } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/ui/empty-state';
+import { LoadingState } from '@/components/ui/loading-state';
 
 export default function RoomsPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -127,90 +130,88 @@ export default function RoomsPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-pulse text-muted-foreground">Yuklanmoqda...</div>
-      </div>
-    );
+    return <LoadingState />;
   }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Xonalar</h1>
-          <p className="text-muted-foreground mt-1">Xonalarni boshqaring va nuqtalarga bog'lang</p>
-        </div>
-
-        <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" />
-              Yangi xona
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Yangi xona yaratish</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>Xona nomi *</Label>
-                <Input
-                  placeholder="Masalan: 101-xona"
-                  aria-label="Xona nomi"
-                  value={newRoom.name || ''}
-                  onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label>Qavat *</Label>
-                <Select
-                  value={newRoom.floor_id?.toString() || ''}
-                  onValueChange={(value) => setNewRoom({ ...newRoom, floor_id: parseInt(value), waypoint_id: null })}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Qavatni tanlang" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {floors.map((floor) => (
-                      <SelectItem key={floor.id} value={floor.id.toString()}>
-                        {floor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {newRoom.floor_id && waypoints.length > 0 && (
+      <PageHeader
+        title="Xonalar"
+        description="Xonalarni boshqaring va nuqtalarga bog'lang"
+        className="mb-8"
+        actions={
+          <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2 w-full sm:w-auto">
+                <Plus className="w-4 h-4" />
+                Yangi xona
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Yangi xona yaratish</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>Nuqtaga bog'lash</Label>
+                  <Label>Xona nomi *</Label>
+                  <Input
+                    placeholder="Masalan: 101-xona"
+                    aria-label="Xona nomi"
+                    value={newRoom.name || ''}
+                    onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Qavat *</Label>
                   <Select
-                    value={newRoom.waypoint_id || ''}
-                    onValueChange={(value) => setNewRoom({ ...newRoom, waypoint_id: value })}
+                    value={newRoom.floor_id?.toString() || ''}
+                    onValueChange={(value) =>
+                      setNewRoom({ ...newRoom, floor_id: parseInt(value), waypoint_id: null })
+                    }
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Nuqtani tanlang (ixtiyoriy)" />
+                      <SelectValue placeholder="Qavatni tanlang" />
                     </SelectTrigger>
                     <SelectContent>
-                      {waypoints.map((wp) => (
-                        <SelectItem key={wp.id} value={wp.id}>
-                          {wp.label || wp.id} ({wp.x}, {wp.y})
+                      {floors.map((floor) => (
+                        <SelectItem key={floor.id} value={floor.id.toString()}>
+                          {floor.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
 
-              <Button onClick={handleCreate} className="w-full">
-                Yaratish
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+                {newRoom.floor_id && waypoints.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Nuqtaga bog'lash</Label>
+                    <Select
+                      value={newRoom.waypoint_id || ''}
+                      onValueChange={(value) => setNewRoom({ ...newRoom, waypoint_id: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Nuqtani tanlang (ixtiyoriy)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {waypoints.map((wp) => (
+                          <SelectItem key={wp.id} value={wp.id}>
+                            {wp.label || wp.id} ({wp.x}, {wp.y})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <Button onClick={handleCreate} className="w-full">
+                  Yaratish
+                </Button>
+              </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -243,21 +244,23 @@ export default function RoomsPage() {
       </div>
 
       {filteredRooms.length === 0 ? (
-        <Card className="p-12 text-center border-dashed">
-          <DoorOpen className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-medium text-foreground mb-2">
-            {searchQuery ? 'Xonalar topilmadi' : "Xonalar yo'q"}
-          </h3>
-          <p className="text-muted-foreground mb-4">
-            {searchQuery ? "Qidiruv so'rovini o'zgartiring" : "Boshlash uchun yangi xona qo'shing"}
-          </p>
-          {!searchQuery && (
-            <Button onClick={() => setIsCreateOpen(true)} variant="outline">
-              <Plus className="w-4 h-4 mr-2" />
-              Xona qo'shish
-            </Button>
-          )}
-        </Card>
+        <EmptyState
+          icon={DoorOpen}
+          title={searchQuery ? 'Xonalar topilmadi' : "Xonalar yo'q"}
+          description={
+            searchQuery
+              ? "Qidiruv so'rovini o'zgartiring"
+              : "Boshlash uchun yangi xona qo'shing"
+          }
+          action={
+            !searchQuery ? (
+              <Button onClick={() => setIsCreateOpen(true)} variant="outline">
+                <Plus className="w-4 h-4 mr-2" />
+                Xona qo'shish
+              </Button>
+            ) : null
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredRooms.map((room, index) => (
@@ -276,7 +279,7 @@ export default function RoomsPage() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
                   onClick={() => handleDelete(room.id)}
                 >
                   <Trash2 className="w-4 h-4" />

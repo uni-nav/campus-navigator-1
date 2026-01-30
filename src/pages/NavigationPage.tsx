@@ -21,11 +21,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { roomsApi, navigationApi, floorsApi, kiosksApi, waypointsApi, getApiUrl } from '@/lib/api/client';
+import { roomsApi, navigationApi, floorsApi, kiosksApi, waypointsApi } from '@/lib/api/client';
 import { Room, Floor, NavigationResponse, PathStep, Kiosk, Waypoint } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
+import { resolveMediaUrl } from '@/lib/media';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { LoadingState } from '@/components/ui/loading-state';
 
 export default function NavigationPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -137,33 +140,6 @@ export default function NavigationPage() {
     fabricCanvasRef.current = canvas;
     setFabricCanvas(canvas);
   }, [viewMode, navigationResult, fabricCanvas]);
-
-  // Resolve media URL helper
-  const resolveMediaUrl = useCallback((url: string) => {
-    if (!url) return '';
-    if (/^https?:\/\//i.test(url)) {
-      try {
-        const parsed = new URL(url);
-        if (parsed.pathname.startsWith('/api/uploads/')) {
-          const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-          return `${base}${parsed.pathname.replace(/^\/api/, '')}`;
-        }
-        if (parsed.pathname.startsWith('/uploads/')) {
-          const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-          return `${base}${parsed.pathname}`;
-        }
-      } catch {
-        // ignore parse errors
-      }
-      return url;
-    }
-    const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-    const rawPath = url.startsWith('/') ? url : `/${url}`;
-    const path = rawPath.startsWith('/api/uploads/')
-      ? rawPath.replace(/^\/api/, '')
-      : rawPath;
-    return `${base}${path}`;
-  }, []);
 
   const stopPathAnimation = useCallback(() => {
     if (animationFrameRef.current !== null) {
@@ -596,7 +572,6 @@ export default function NavigationPage() {
     floorsInPath,
     currentFloorIndex,
     floors,
-    resolveMediaUrl,
     computePathMetrics,
     getPointAtDistance,
     stopPathAnimation,
@@ -812,26 +787,21 @@ export default function NavigationPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-pulse text-muted-foreground">Yuklanmoqda...</div>
-      </div>
-    );
+    return <LoadingState />;
   }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Navigatsiya</h1>
-        <p className="text-muted-foreground mt-1">
-          Boshlanish va manzilni tanlab yo'l ko'rsatishni oling
-        </p>
-      </div>
+      <PageHeader
+        title="Navigatsiya"
+        description="Boshlanish va manzilni tanlab yo'l ko'rsatishni oling"
+        className="mb-6"
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[360px,1fr] gap-4 lg:gap-6">
         {/* Controls */}
         <div className="space-y-6">
-          <Card className="p-6">
+          <Card className="p-4 sm:p-6">
             <div className="space-y-5">
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Yo'l topish</h3>
@@ -1020,12 +990,12 @@ export default function NavigationPage() {
           </Card>
 
           {navigationResult && (
-            <Card className="p-6 space-y-4">
+            <Card className="p-4 sm:p-6 space-y-4">
               <div>
                 <h3 className="font-semibold text-foreground">Yo'l ma'lumotlari</h3>
                 <p className="text-xs text-muted-foreground">{startLabel} {'->'} {endLabel}</p>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="p-3 rounded-lg bg-muted text-center">
                   <p className="text-xl font-bold text-foreground">
                     {Math.round(navigationResult.total_distance)}
@@ -1061,7 +1031,7 @@ export default function NavigationPage() {
         {/* Result view */}
         <div className="space-y-4">
           {navigating ? (
-            <Card className="p-12 text-center">
+            <Card className="p-8 sm:p-12 text-center">
               <div className="animate-pulse">
                 <Navigation className="w-12 h-12 mx-auto text-primary mb-4" />
                 <p className="text-muted-foreground">Yo'l hisoblanmoqda...</p>
@@ -1089,7 +1059,7 @@ export default function NavigationPage() {
                 {/* Floor Navigation Controls */}
                 {floorsInPath.length > 1 && (
                   <div className="mb-4 space-y-3">
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                       <Button
                         variant="outline"
                         size="sm"
@@ -1099,7 +1069,7 @@ export default function NavigationPage() {
                         <ChevronLeft className="w-4 h-4 mr-1" />
                         Oldingi
                       </Button>
-                      <span className="text-sm font-medium">
+                      <span className="text-sm font-medium text-center">
                         {getFloorName(floorsInPath[currentFloorIndex])}
                         <span className="text-muted-foreground ml-2">
                           ({currentFloorIndex + 1}/{floorsInPath.length})
@@ -1174,7 +1144,7 @@ export default function NavigationPage() {
                 </div>
               </Card>
             ) : (
-              <Card className="p-6">
+              <Card className="p-4 sm:p-6">
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                   <div>
                     <h3 className="text-lg font-semibold text-foreground">Matnli yo'l</h3>
@@ -1218,7 +1188,7 @@ export default function NavigationPage() {
               </Card>
             )
           ) : (
-            <Card className="p-12 text-center border-dashed">
+            <Card className="p-8 sm:p-12 text-center border-dashed">
               <Navigation className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
               <h3 className="text-lg font-medium text-foreground mb-2">Navigatsiya xaritasi</h3>
               <p className="text-muted-foreground">

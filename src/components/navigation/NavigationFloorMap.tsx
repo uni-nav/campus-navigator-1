@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Canvas as FabricCanvas, FabricImage, Line, Circle, Polyline } from 'fabric';
-import { getApiUrl } from '@/lib/api/client';
 import { Waypoint, PathStep, Floor } from '@/lib/api/types';
+import { resolveMediaUrl } from '@/lib/media';
 
 interface NavigationFloorMapProps {
   floor: Floor;
@@ -44,14 +44,6 @@ export function NavigationFloorMap({
     return () => {
       canvas.dispose();
     };
-  }, []);
-
-  // Resolve media URL helper
-  const resolveMediaUrl = useCallback((url: string) => {
-    if (/^https?:\/\//i.test(url)) return url;
-    const base = getApiUrl().replace(/\/$/, '');
-    const path = url.startsWith('/') ? url : `/${url}`;
-    return `${base}${path}`;
   }, []);
 
   // Load floor image and draw path

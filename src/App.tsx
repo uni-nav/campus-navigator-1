@@ -21,6 +21,7 @@ import RoomsPage from "./pages/RoomsPage";
 import SettingsPage from "./pages/SettingsPage";
 import KiosksPage from "./pages/KiosksPage";
 import NotFound from "./pages/NotFound";
+import LoginPage from "./pages/LoginPage";
 
 // Loading fallback component
 const PageLoader = () => (
@@ -63,6 +64,7 @@ const App = () => (
               } />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>
+            <Route path="/login" element={<LoginPage />} />
             <Route path="/kiosk" element={
               <Suspense fallback={<PageLoader />}>
                 <PublicNavigationPage />

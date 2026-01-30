@@ -8,6 +8,7 @@ import { roomsApi, floorsApi, kiosksApi, navigationApi, waypointsApi, getApiUrl 
 import type { Floor, Kiosk, NavigationResponse, PathStep, Room, Waypoint } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { resolveMediaUrl } from '@/lib/media';
 
 const ANIMATION_SPEED = 70; // px per second in canvas space (match admin navigation)
 const IDLE_TIMEOUT_MS = 300_000;
@@ -39,32 +40,6 @@ const saveCache = <T,>(key: string, value: T) => {
   }
 };
 type AnimationState = 'active' | 'pending' | 'completed';
-
-const resolveMediaUrl = (url: string | null) => {
-  if (!url) return null;
-  if (/^https?:\/\//i.test(url)) {
-    try {
-      const parsed = new URL(url);
-      if (parsed.pathname.startsWith('/api/uploads/')) {
-        const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-        return `${base}${parsed.pathname.replace(/^\/api/, '')}`;
-      }
-      if (parsed.pathname.startsWith('/uploads/')) {
-        const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-        return `${base}${parsed.pathname}`;
-      }
-    } catch {
-      // ignore parse errors
-    }
-    return url;
-  }
-  const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-  const rawPath = url.startsWith('/') ? url : `/${url}`;
-  const path = rawPath.startsWith('/api/uploads/')
-    ? rawPath.replace(/^\/api/, '')
-    : rawPath;
-  return `${base}${path}`;
-};
 
 type FloorRun = {
   floorId: number;
@@ -169,6 +144,7 @@ const AnimatedPathCanvas = ({
   const drawRef = useRef<(progress: number | null, pulse: number) => void>(() => {});
   const animateRef = useRef<(time: number) => void>(() => {});
   const progressRef = useRef(0);
+  const dashOffsetRef = useRef(0);
   const lastTimeRef = useRef<number | null>(null);
   const frameTimeRef = useRef<number | null>(null);
   const completedRef = useRef(false);
@@ -181,6 +157,7 @@ const AnimatedPathCanvas = ({
     lastTimeRef.current = null;
     frameTimeRef.current = null;
     progressRef.current = 0;
+    dashOffsetRef.current = 0;
     completedRef.current = false;
   }, []);
 
@@ -333,17 +310,18 @@ const AnimatedPathCanvas = ({
       };
 
       const drawKioskMarker = (point: CanvasPoint) => {
+        const pulseValue = (Math.sin(pulse * Math.PI * 2) + 1) / 2;
+        const ringRadius = 10 + pulseValue * 6;
+        const ringOpacity = 0.35 + pulseValue * 0.35;
+
         ctx.save();
-        const ringRadius = 12 + pulse * 6;
         ctx.beginPath();
-        ctx.strokeStyle = 'rgba(14,165,233,0.8)';
+        ctx.fillStyle = `rgba(14,165,233,${0.15 * ringOpacity})`;
+        ctx.strokeStyle = `rgba(14,165,233,${0.8 * ringOpacity})`;
         ctx.lineWidth = 2;
         ctx.arc(point.x, point.y, ringRadius, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.fillStyle = 'rgba(14,165,233,0.15)';
-        ctx.arc(point.x, point.y, ringRadius - 2, 0, Math.PI * 2);
         ctx.fill();
+        ctx.stroke();
 
         ctx.shadowColor = 'rgba(14,165,233,0.6)';
         ctx.shadowBlur = 12;
@@ -355,12 +333,14 @@ const AnimatedPathCanvas = ({
         ctx.fill();
         ctx.stroke();
         ctx.restore();
-        drawLabel('Kiosk', point.x + 12, point.y - 8, {
-          fontSize: 11,
-          fill: '#bae6fd',
-          background: 'rgba(2,132,199,0.35)',
-          stroke: 'rgba(186,230,253,0.3)',
-        });
+
+        ctx.save();
+        ctx.fillStyle = '#bae6fd';
+        ctx.font = '600 11px "Plus Jakarta Sans", "Inter", sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('Kiosk', point.x + 10, point.y + 8);
+        ctx.restore();
       };
 
       const drawDestinationMarker = (point: CanvasPoint, pulseValue: number) => {
@@ -417,7 +397,7 @@ const AnimatedPathCanvas = ({
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.setLineDash([2, 10]);
-        ctx.lineDashOffset = -drawLength * 0.25;
+        ctx.lineDashOffset = dashOffsetRef.current;
         ctx.beginPath();
         points.forEach((p, idx) => {
           if (idx === 0) ctx.moveTo(p.x, p.y);
@@ -464,22 +444,26 @@ const AnimatedPathCanvas = ({
         drawMarker(marker, '#A855F7', marker.direction === 'up' ? '↑' : '↓')
       );
 
-      if (startCanvas) drawKioskMarker(startCanvas);
-      if (endCanvas) {
+      if (startCanvas && points.length > 0) {
         ctx.beginPath();
-        ctx.fillStyle = '#22C55E';
-        ctx.strokeStyle = '#0f172a';
-        ctx.lineWidth = 2;
-        ctx.arc(endCanvas.x, endCanvas.y, 9, 0, Math.PI * 2);
+        ctx.fillStyle = '#3B82F6';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 3;
+        ctx.arc(startCanvas.x, startCanvas.y, 10, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        drawLabel('Maqsad', endCanvas.x + 10, endCanvas.y + 6, {
-          fontSize: 11,
-          fill: '#dcfce7',
-          background: 'rgba(20,83,45,0.5)',
-          stroke: 'rgba(134,239,172,0.3)',
-        });
       }
+      if (endCanvas && points.length > 0) {
+        ctx.beginPath();
+        ctx.fillStyle = '#22C55E';
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 3;
+        ctx.arc(endCanvas.x, endCanvas.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      if (startCanvas) drawKioskMarker(startCanvas);
 
       if (poiPoints.length > 0) {
         poiPoints.forEach((point) => {
@@ -524,7 +508,7 @@ const AnimatedPathCanvas = ({
         ctx.strokeStyle = '#f8fafc';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(mover.x - 4.5, mover.y + 4 - 6, 9, 12, 4);
+        ctx.roundRect(mover.x - 4.5, mover.y - 2, 9, 12, 4);
         ctx.fill();
         ctx.stroke();
 
@@ -599,6 +583,7 @@ const AnimatedPathCanvas = ({
       if (animationState === 'pending') {
         progress = 0;
         progressRef.current = 0;
+        dashOffsetRef.current = 0;
         lastTimeRef.current = time;
         completedRef.current = false;
         draw(0, pulse);
@@ -621,6 +606,9 @@ const AnimatedPathCanvas = ({
       lastTimeRef.current = time;
 
       progress += elapsed * ANIMATION_SPEED;
+      if (progress < totalLength) {
+        dashOffsetRef.current -= elapsed * ANIMATION_SPEED * 0.25;
+      }
       if (progress >= totalLength) {
         progress = totalLength;
         if (!completedRef.current) {
@@ -1160,16 +1148,17 @@ export default function PublicNavigationPage() {
   }, []);
 
   return (
-    <div ref={rootRef} className="min-h-screen bg-black text-white relative">
-      <div
-        className={cn(
-          'absolute inset-0 grid h-full gap-4 p-4',
-          splitView
-            ? 'grid-cols-1 grid-rows-2 lg:grid-cols-2 lg:grid-rows-1'
-            : 'grid-cols-1 grid-rows-1'
-        )}
-      >
-        {displayRuns.map(({ run, runIndex }, slotIndex) => {
+    <div ref={rootRef} className="min-h-[100dvh] bg-black text-white relative flex flex-col">
+      <div className="relative flex-1 min-h-[55vh]">
+        <div
+          className={cn(
+            'absolute inset-0 grid h-full gap-4 p-4 sm:p-6',
+            splitView
+              ? 'grid-cols-1 grid-rows-2 lg:grid-cols-2 lg:grid-rows-1'
+              : 'grid-cols-1 grid-rows-1'
+          )}
+        >
+          {displayRuns.map(({ run, runIndex }, slotIndex) => {
           if (!run) {
             return (
               <div
@@ -1281,16 +1270,17 @@ export default function PublicNavigationPage() {
               </div>
             </div>
           );
-        })}
+          })}
+        </div>
+
+        {offlineMode && (
+          <div className="absolute top-4 right-4 z-20 rounded-full bg-amber-500/20 px-3 py-1 text-xs text-amber-200 border border-amber-300/40">
+            Offline
+          </div>
+        )}
       </div>
 
-      {offlineMode && (
-        <div className="absolute top-4 right-4 z-20 rounded-full bg-amber-500/20 px-3 py-1 text-xs text-amber-200 border border-amber-300/40">
-          Offline
-        </div>
-      )}
-
-      <div className="relative z-10 flex flex-col lg:flex-row lg:items-start lg:justify-between p-4 sm:p-6 gap-4 lg:gap-6">
+      <div className="relative z-10 flex flex-col lg:flex-row lg:items-start lg:justify-between p-4 sm:p-6 gap-4 lg:gap-6 lg:absolute lg:top-4 lg:left-4 lg:right-4">
         <Card className="w-full max-w-full lg:max-w-sm bg-black/70 border-white/10 text-white">
           <div className="p-4 space-y-3">
             <div className="flex items-center gap-2 text-lg font-semibold">
@@ -1358,20 +1348,20 @@ export default function PublicNavigationPage() {
         </Card>
       </div>
 
-      {kioskConfigError && (
-        <div className="absolute bottom-6 left-6 z-10">
-          <Card className="bg-amber-500/20 border-amber-300/30 text-amber-100">
-            <div className="p-3 text-sm">
-              {kioskConfigError}
-            </div>
-          </Card>
-        </div>
-      )}
-      {isKioskLoading && (
-        <div className="absolute bottom-6 right-6 z-10">
-          <Card className="bg-blue-500/20 border-blue-300/30 text-blue-100">
-            <div className="p-3 text-sm">Kiosk maʼlumotlari yuklanmoqda...</div>
-          </Card>
+      {(kioskConfigError || isKioskLoading) && (
+        <div className="relative z-10 flex flex-col sm:flex-row gap-3 px-4 pb-4 sm:px-6 sm:pb-6 lg:absolute lg:bottom-6 lg:left-6 lg:right-6 lg:px-0 lg:pb-0">
+          {kioskConfigError && (
+            <Card className="bg-amber-500/20 border-amber-300/30 text-amber-100 w-full sm:max-w-sm">
+              <div className="p-3 text-sm">
+                {kioskConfigError}
+              </div>
+            </Card>
+          )}
+          {isKioskLoading && (
+            <Card className="bg-blue-500/20 border-blue-300/30 text-blue-100 w-full sm:max-w-sm">
+              <div className="p-3 text-sm">Kiosk maʼlumotlari yuklanmoqda...</div>
+            </Card>
+          )}
         </div>
       )}
 

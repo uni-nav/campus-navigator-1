@@ -34,6 +34,9 @@ import { useQuery } from '@tanstack/react-query';
 import { floorsApi, waypointsApi } from '@/lib/api/client';
 import { Kiosk } from '@/lib/api/types';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/ui/empty-state';
+import { LoadingState } from '@/components/ui/loading-state';
 
 export default function KiosksPage() {
   const { data: kiosks, isLoading } = useKiosks();
@@ -107,126 +110,123 @@ export default function KiosksPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-pulse text-muted-foreground">Yuklanmoqda...</div>
-      </div>
-    );
+    return <LoadingState />;
   }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Kiosklar</h1>
-          <p className="text-muted-foreground mt-1">
-            Kiosk qurilmalarini boshqaring
-          </p>
-        </div>
-
-        <Dialog open={dialogOpen} onOpenChange={(open) => {
-          setDialogOpen(open);
-          if (!open) resetForm();
-        }}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" />
-              Yangi kiosk
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingId ? 'Kioskni tahrirlash' : 'Yangi kiosk'}</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label>Nomi</Label>
-                <Input
-                  placeholder="Kiosk nomi"
-                  aria-label="Kiosk nomi"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                />
+      <PageHeader
+        title="Kiosklar"
+        description="Kiosk qurilmalarini boshqaring"
+        className="mb-8"
+        actions={
+          <Dialog
+            open={dialogOpen}
+            onOpenChange={(open) => {
+              setDialogOpen(open);
+              if (!open) resetForm();
+            }}
+          >
+            <DialogTrigger asChild>
+              <Button className="gap-2 w-full sm:w-auto">
+                <Plus className="w-4 h-4" />
+                Yangi kiosk
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>{editingId ? 'Kioskni tahrirlash' : 'Yangi kiosk'}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label>Nomi</Label>
+                  <Input
+                    placeholder="Kiosk nomi"
+                    aria-label="Kiosk nomi"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Qavat</Label>
+                  <Select
+                    value={formData.floor_id}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, floor_id: value, waypoint_id: '' });
+                      setSelectedFloorForWaypoints(parseInt(value));
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Qavatni tanlang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {floors?.map((floor) => (
+                        <SelectItem key={floor.id} value={floor.id.toString()}>
+                          {floor.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Nuqta</Label>
+                  <Select
+                    value={formData.waypoint_id}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, waypoint_id: value === 'none' ? '' : value })
+                    }
+                    disabled={!selectedFloorForWaypoints}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Nuqtani tanlang" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Biriktirilmasin</SelectItem>
+                      {waypoints?.map((wp) => (
+                        <SelectItem key={wp.id} value={wp.id}>
+                          {wp.label || wp.id} ({wp.type})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Tavsif (ixtiyoriy)</Label>
+                  <Input
+                    placeholder="Kiosk haqida ma'lumot"
+                    aria-label="Kiosk tavsifi"
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  />
+                </div>
+                <div className="flex flex-col sm:flex-row sm:justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>
+                    Bekor qilish
+                  </Button>
+                  <Button onClick={handleSubmit} disabled={createKiosk.isPending || updateKiosk.isPending}>
+                    {editingId ? 'Saqlash' : 'Yaratish'}
+                  </Button>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label>Qavat</Label>
-                <Select
-                  value={formData.floor_id}
-                  onValueChange={(value) => {
-                    setFormData({ ...formData, floor_id: value, waypoint_id: '' });
-                    setSelectedFloorForWaypoints(parseInt(value));
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Qavatni tanlang" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {floors?.map((floor) => (
-                      <SelectItem key={floor.id} value={floor.id.toString()}>
-                        {floor.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Nuqta</Label>
-                <Select
-                  value={formData.waypoint_id}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, waypoint_id: value === 'none' ? '' : value })
-                  }
-                  disabled={!selectedFloorForWaypoints}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Nuqtani tanlang" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">Biriktirilmasin</SelectItem>
-                    {waypoints?.map((wp) => (
-                      <SelectItem key={wp.id} value={wp.id}>
-                        {wp.label || wp.id} ({wp.type})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Tavsif (ixtiyoriy)</Label>
-                <Input
-                  placeholder="Kiosk haqida ma'lumot"
-                  aria-label="Kiosk tavsifi"
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => { setDialogOpen(false); resetForm(); }}>
-                  Bekor qilish
-                </Button>
-                <Button onClick={handleSubmit} disabled={createKiosk.isPending || updateKiosk.isPending}>
-                  {editingId ? 'Saqlash' : 'Yaratish'}
-                </Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+            </DialogContent>
+          </Dialog>
+        }
+      />
 
       {/* Kiosks Grid */}
       {!kiosks?.length ? (
-        <Card className="p-12 text-center border-dashed">
-          <Monitor className="w-12 h-12 mx-auto text-muted-foreground/50 mb-4" />
-          <h3 className="text-lg font-medium text-foreground mb-2">Kiosklar yo'q</h3>
-          <p className="text-muted-foreground mb-4">
-            Birinchi kioskni yarating
-          </p>
-          <Button onClick={() => setDialogOpen(true)} className="gap-2">
-            <Plus className="w-4 h-4" />
-            Yangi kiosk
-          </Button>
-        </Card>
+        <EmptyState
+          icon={Monitor}
+          title="Kiosklar yo'q"
+          description="Birinchi kioskni yarating"
+          action={
+            <Button onClick={() => setDialogOpen(true)} className="gap-2">
+              <Plus className="w-4 h-4" />
+              Yangi kiosk
+            </Button>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {kiosks.map((kiosk) => (

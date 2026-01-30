@@ -24,10 +24,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
-import { floorsApi, waypointsApi, connectionsApi, roomsApi, kiosksApi, getApiUrl } from '@/lib/api/client';
+import { floorsApi, waypointsApi, connectionsApi, roomsApi, kiosksApi } from '@/lib/api/client';
 import { Floor, Waypoint, Connection, Room, WaypointType, WaypointCreate, ConnectionCreate, Kiosk } from '@/lib/api/types';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
+import { resolveMediaUrl } from '@/lib/media';
+import { LoadingState } from '@/components/ui/loading-state';
+import { EmptyState } from '@/components/ui/empty-state';
 
 const WAYPOINT_COLORS: Record<WaypointType, string> = {
   hallway: '#4A90D9',
@@ -249,31 +252,6 @@ export default function FloorEditorPage() {
       setImageSize(null);
       return;
     }
-
-    const resolveMediaUrl = (url: string) => {
-      if (/^https?:\/\//i.test(url)) {
-        try {
-          const parsed = new URL(url);
-          if (parsed.pathname.startsWith('/api/uploads/')) {
-            const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-            return `${base}${parsed.pathname.replace(/^\/api/, '')}`;
-          }
-          if (parsed.pathname.startsWith('/uploads/')) {
-            const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-            return `${base}${parsed.pathname}`;
-          }
-        } catch {
-          // ignore parse errors
-        }
-        return url;
-      }
-      const base = getApiUrl().replace(/\/$/, '').replace(/\/api$/, '');
-      const rawPath = url.startsWith('/') ? url : `/${url}`;
-      const path = rawPath.startsWith('/api/uploads/')
-        ? rawPath.replace(/^\/api/, '')
-        : rawPath;
-      return `${base}${path}`;
-    };
 
     const imageUrl = resolveMediaUrl(floor.image_url);
 
@@ -715,17 +693,22 @@ export default function FloorEditorPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-pulse text-muted-foreground">Yuklanmoqda...</div>
-      </div>
-    );
+    return <LoadingState />;
   }
 
   if (!floor) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-muted-foreground">Qavat topilmadi</div>
+      <div className="p-4 sm:p-6 lg:p-8">
+        <EmptyState
+          icon={MapPin}
+          title="Qavat topilmadi"
+          description="Qavatlar ro‘yxatiga qaytib, mavjud qavatni tanlang"
+          action={
+            <Button variant="outline" onClick={() => navigate('/floors')}>
+              Orqaga qaytish
+            </Button>
+          }
+        />
       </div>
     );
   }

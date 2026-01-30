@@ -1,10 +1,10 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, Navigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
-import { healthCheck } from '@/lib/api/client';
+import { healthCheck, getAdminToken } from '@/lib/api/client';
 import { useAppStore } from '@/lib/store';
 import { cn } from '@/lib/utils';
 
@@ -26,8 +26,13 @@ export function AdminLayout() {
     return () => clearInterval(interval);
   }, [setIsApiConnected]);
 
+  const hasToken = Boolean(getAdminToken());
+  if (!hasToken) {
+    return <Navigate to="/login" replace />;
+  }
+
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex min-h-[100dvh] overflow-hidden bg-background">
       <Sidebar
         className="hidden lg:flex"
         collapsed={sidebarCollapsed}

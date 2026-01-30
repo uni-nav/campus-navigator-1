@@ -8,6 +8,7 @@ import { useAppStore } from '@/lib/store';
 import { setApiUrl, getApiUrl, getAdminToken, setAdminToken, healthCheck, navigationApi } from '@/lib/api/client';
 import type { MapAuditResponse } from '@/lib/api/types';
 import { toast } from 'sonner';
+import { PageHeader } from '@/components/layout/PageHeader';
 
 export default function SettingsPage() {
   const {
@@ -70,11 +71,12 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 max-w-2xl animate-fade-in">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">Sozlamalar</h1>
-        <p className="text-muted-foreground mt-1">API va qurilma sozlamalari</p>
-      </div>
+    <div className="p-4 sm:p-6 lg:p-8 max-w-3xl animate-fade-in">
+      <PageHeader
+        title="Sozlamalar"
+        description="API va qurilma sozlamalari"
+        className="mb-8"
+      />
 
       <div className="space-y-6">
         {/* API Settings */}
@@ -92,7 +94,7 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>API manzili</Label>
-              <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row gap-2">
                 <Input
                   placeholder="http://localhost:8000"
                   aria-label="API manzili"
@@ -104,6 +106,7 @@ export default function SettingsPage() {
                   variant="outline"
                   onClick={handleTestConnection}
                   disabled={testing}
+                  className="w-full sm:w-auto"
                 >
                   {testing ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />

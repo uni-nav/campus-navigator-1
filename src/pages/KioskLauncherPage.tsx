@@ -8,6 +8,9 @@ import { kiosksApi, floorsApi } from '@/lib/api/client';
 import { Floor, Kiosk } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { PageHeader } from '@/components/layout/PageHeader';
+import { EmptyState } from '@/components/ui/empty-state';
+import { LoadingState } from '@/components/ui/loading-state';
 
 export default function KioskLauncherPage() {
   const navigate = useNavigate();
@@ -55,40 +58,39 @@ export default function KioskLauncherPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="animate-pulse text-muted-foreground">Yuklanmoqda...</div>
-      </div>
-    );
+    return <LoadingState />;
   }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">Kiosk ekranlari</h1>
-        <p className="text-muted-foreground mt-1">
-          Kiosk tanlang va ommaviy ekranga o'ting
-        </p>
-      </div>
+      <PageHeader
+        title="Kiosk ekranlari"
+        description="Kiosk tanlang va ommaviy ekranga o'ting"
+        className="mb-6"
+      />
 
       <Card className="p-4 mb-6">
-        <div className="relative max-w-md">
+        <div className="relative w-full lg:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
             placeholder="Kiosk nomi, ID yoki qavat..."
             aria-label="Kiosk qidirish"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="pl-10"
+            className="pl-10 w-full"
           />
         </div>
       </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.length === 0 && (
-          <Card className="p-6 text-center col-span-full">
-            <div className="text-muted-foreground">Kiosk topilmadi</div>
-          </Card>
+          <div className="col-span-full">
+            <EmptyState
+              icon={Monitor}
+              title="Kiosk topilmadi"
+              description="Qidiruv so'rovini o'zgartiring yoki yangi kiosk yarating"
+            />
+          </div>
         )}
         {filtered.map((kiosk) => (
           <Card key={kiosk.id} className="p-5 flex flex-col gap-4">
