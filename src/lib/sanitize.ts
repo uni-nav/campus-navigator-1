@@ -106,6 +106,7 @@ export function isValidHttpUrl(url: string): boolean {
  */
 export function sanitizeInput(input: string, maxLength = 1000): string {
     // Remove null bytes and control characters (except newline and tab)
+    // eslint-disable-next-line no-control-regex
     let cleaned = input.replace(/[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]/g, '');
 
     // Trim whitespace
@@ -135,6 +136,7 @@ export function sanitizeFilename(filename: string): string {
     let cleaned = filename.replace(/[/\\]/g, '');
 
     // Remove dangerous characters
+    // eslint-disable-next-line no-control-regex
     cleaned = cleaned.replace(/[<>:"|?*\x00-\x1f]/g, '');
 
     // Trim dots and spaces from start/end

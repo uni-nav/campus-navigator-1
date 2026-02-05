@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Canvas as FabricCanvas, FabricImage, Line, Circle, Polyline } from 'fabric';
 import { Waypoint, PathStep, Floor } from '@/lib/api/types';
 import { resolveMediaUrl } from '@/lib/media';
@@ -26,15 +26,17 @@ export function NavigationFloorMap({
   isCurrentFloor = false,
 }: NavigationFloorMapProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
+  const renderIdRef = useRef(0);
 
   // Initialize canvas
   useEffect(() => {
     if (!canvasRef.current) return;
 
     const canvas = new FabricCanvas(canvasRef.current, {
-      width: 600,
-      height: 400,
+      width: 1,
+      height: 1,
       backgroundColor: '#1a1a2e',
       selection: false,
     });
@@ -46,127 +48,168 @@ export function NavigationFloorMap({
     };
   }, []);
 
-  // Load floor image and draw path
-  useEffect(() => {
-    if (!fabricCanvas || !floor?.image_url) return;
+  const drawPath = useCallback(
+    (scale: number, offsetX: number, offsetY: number) => {
+      if (!fabricCanvas || pathSteps.length < 2) return;
 
-    const imageUrl = resolveMediaUrl(floor.image_url);
+      // Create path coordinates
+      const points = pathSteps.map((step) => ({
+        x: step.x * scale + offsetX,
+        y: step.y * scale + offsetY,
+      }));
 
-    FabricImage.fromURL(imageUrl, { crossOrigin: 'anonymous' }).then((img) => {
-      const canvasWidth = fabricCanvas.width || 600;
-      const canvasHeight = fabricCanvas.height || 400;
-
-      const scale = Math.min(canvasWidth / (img.width || 1), canvasHeight / (img.height || 1)) * 0.95;
-
-      img.set({
-        scaleX: scale,
-        scaleY: scale,
-        left: (canvasWidth - (img.width || 0) * scale) / 2,
-        top: (canvasHeight - (img.height || 0) * scale) / 2,
+      const pathLine = new Polyline(points, {
+        stroke: '#22C55E',
+        strokeWidth: 4,
+        fill: 'transparent',
         selectable: false,
         evented: false,
-        opacity: 0.8,
+        strokeDashArray: [10, 5],
       });
 
-      fabricCanvas.add(img);
-      fabricCanvas.sendObjectToBack(img);
+      (pathLine as unknown as { isPath?: boolean }).isPath = true;
+      fabricCanvas.add(pathLine);
 
-      // Draw path after image loads
-      drawPath(scale, img.left || 0, img.top || 0);
-      drawWaypoints(scale, img.left || 0, img.top || 0);
-    });
-  }, [fabricCanvas, floor?.image_url, pathSteps, waypoints]);
+      if (points.length >= 2) {
+        const startMarker = new Circle({
+          left: points[0].x,
+          top: points[0].y,
+          radius: 8,
+          fill: '#3B82F6',
+          stroke: '#fff',
+          strokeWidth: 2,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        (startMarker as unknown as { isPath?: boolean }).isPath = true;
 
-  const drawPath = (scale: number, offsetX: number, offsetY: number) => {
-    if (!fabricCanvas || pathSteps.length < 2) return;
+        const endMarker = new Circle({
+          left: points[points.length - 1].x,
+          top: points[points.length - 1].y,
+          radius: 8,
+          fill: '#22C55E',
+          stroke: '#fff',
+          strokeWidth: 2,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        (endMarker as unknown as { isPath?: boolean }).isPath = true;
 
-    // Remove existing path lines
-    fabricCanvas.getObjects('polyline').forEach((obj) => {
-      fabricCanvas.remove(obj);
-    });
+        fabricCanvas.add(startMarker);
+        fabricCanvas.add(endMarker);
+      }
+    },
+    [fabricCanvas, pathSteps]
+  );
 
-    // Create path coordinates
-    const points = pathSteps.map((step) => ({
-      x: step.x * scale + offsetX,
-      y: step.y * scale + offsetY,
-    }));
+  const drawWaypoints = useCallback(
+    (scale: number, offsetX: number, offsetY: number) => {
+      if (!fabricCanvas) return;
 
-    // Draw animated path
-    const pathLine = new Polyline(points, {
-      stroke: '#22C55E',
-      strokeWidth: 4,
-      fill: 'transparent',
-      selectable: false,
-      evented: false,
-      strokeDashArray: [10, 5],
-    });
+      waypoints.forEach((wp) => {
+        const isInPath = pathSteps.some((step) => step.waypoint_id === wp.id);
+        if (isInPath) return;
 
-    fabricCanvas.add(pathLine);
+        const circle = new Circle({
+          left: wp.x * scale + offsetX,
+          top: wp.y * scale + offsetY,
+          radius: 5,
+          fill: WAYPOINT_COLORS[wp.type] || '#4A90D9',
+          stroke: 'rgba(0,0,0,0.3)',
+          strokeWidth: 1,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+          opacity: 0.5,
+        });
 
-    // Start and end markers
-    if (points.length >= 2) {
-      // Start marker (blue circle)
-      const startMarker = new Circle({
-        left: points[0].x,
-        top: points[0].y,
-        radius: 8,
-        fill: '#3B82F6',
-        stroke: '#fff',
-        strokeWidth: 2,
-        originX: 'center',
-        originY: 'center',
-        selectable: false,
-        evented: false,
+        (circle as unknown as { isWaypoint?: boolean }).isWaypoint = true;
+        fabricCanvas.add(circle);
       });
+    },
+    [fabricCanvas, pathSteps, waypoints]
+  );
 
-      // End marker (green circle)
-      const endMarker = new Circle({
-        left: points[points.length - 1].x,
-        top: points[points.length - 1].y,
-        radius: 8,
-        fill: '#22C55E',
-        stroke: '#fff',
-        strokeWidth: 2,
-        originX: 'center',
-        originY: 'center',
-        selectable: false,
-        evented: false,
-      });
+  const renderScene = useCallback(async () => {
+    if (!fabricCanvas) return;
+    const localRenderId = ++renderIdRef.current;
 
-      fabricCanvas.add(startMarker);
-      fabricCanvas.add(endMarker);
+    // Remove everything except keep backgroundColor.
+    fabricCanvas.getObjects().forEach((obj) => fabricCanvas.remove(obj));
+
+    if (!floor?.image_url) {
+      fabricCanvas.requestRenderAll();
+      return;
     }
 
-    fabricCanvas.renderAll();
-  };
+    const imageUrl = resolveMediaUrl(floor.image_url);
+    let img: FabricImage;
+    try {
+      img = await FabricImage.fromURL(imageUrl, { crossOrigin: 'anonymous' });
+    } catch {
+      // CORS fallback
+      img = await FabricImage.fromURL(imageUrl);
+    }
 
-  const drawWaypoints = (scale: number, offsetX: number, offsetY: number) => {
-    if (!fabricCanvas) return;
+    if (localRenderId !== renderIdRef.current) return;
 
-    // Draw waypoints that are not in the path
-    waypoints.forEach((wp) => {
-      const isInPath = pathSteps.some((step) => step.waypoint_id === wp.id);
-      if (isInPath) return; // Skip waypoints already in path
+    const canvasWidth = fabricCanvas.getWidth();
+    const canvasHeight = fabricCanvas.getHeight();
+    const scale = Math.min(canvasWidth / (img.width || 1), canvasHeight / (img.height || 1)) * 0.95;
+    const offsetX = (canvasWidth - (img.width || 0) * scale) / 2;
+    const offsetY = (canvasHeight - (img.height || 0) * scale) / 2;
 
-      const circle = new Circle({
-        left: wp.x * scale + offsetX,
-        top: wp.y * scale + offsetY,
-        radius: 5,
-        fill: WAYPOINT_COLORS[wp.type] || '#4A90D9',
-        stroke: 'rgba(0,0,0,0.3)',
-        strokeWidth: 1,
-        originX: 'center',
-        originY: 'center',
-        selectable: false,
-        evented: false,
-        opacity: 0.5,
-      });
-
-      fabricCanvas.add(circle);
+    img.set({
+      scaleX: scale,
+      scaleY: scale,
+      left: offsetX,
+      top: offsetY,
+      selectable: false,
+      evented: false,
+      opacity: 0.8,
     });
 
-    fabricCanvas.renderAll();
-  };
+    fabricCanvas.add(img);
+    fabricCanvas.sendObjectToBack(img);
+
+    drawPath(scale, offsetX, offsetY);
+    drawWaypoints(scale, offsetX, offsetY);
+
+    fabricCanvas.requestRenderAll();
+  }, [drawPath, drawWaypoints, fabricCanvas, floor?.image_url]);
+
+  // Responsive canvas sizing
+  useEffect(() => {
+    if (!fabricCanvas) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const handleResize = () => {
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width > 0 && height > 0) {
+        fabricCanvas.setDimensions({ width, height }, { cssOnly: false });
+        fabricCanvas.calcOffset();
+        void renderScene();
+      }
+    };
+
+    handleResize();
+    const observer = new ResizeObserver(handleResize);
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, [fabricCanvas, renderScene]);
+
+  // Load floor image and draw path/waypoints
+  useEffect(() => {
+    void renderScene();
+  }, [renderScene]);
 
   return (
     <div className={`rounded-lg border overflow-hidden ${isCurrentFloor ? 'border-primary ring-2 ring-primary/20' : 'border-border'}`}>
@@ -178,7 +221,9 @@ export function NavigationFloorMap({
           </span>
         )}
       </div>
-      <canvas ref={canvasRef} />
+      <div ref={containerRef} className="w-full aspect-video bg-[#1a1a2e]">
+        <canvas ref={canvasRef} />
+      </div>
     </div>
   );
 }

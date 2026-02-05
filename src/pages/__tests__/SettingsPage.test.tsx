@@ -2,33 +2,45 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@/test/utils';
 import SettingsPage from '@/pages/SettingsPage';
 
-const setApiUrlMock = vi.fn();
-const setAdminTokenMock = vi.fn();
-const setIsApiConnectedMock = vi.fn();
+const mocks = vi.hoisted(() => ({
+  setApiUrl: vi.fn(),
+  setAdminToken: vi.fn(),
+  setIsApiConnected: vi.fn(),
+}));
 
 vi.mock('@/lib/store', () => ({
-  useAppStore: () => ({
-    apiUrl: 'http://localhost:8000',
-    setApiUrl: vi.fn(),
-    isApiConnected: false,
-    setIsApiConnected: setIsApiConnectedMock,
-  }),
+  useAppStore: <T,>(
+    selector?: (s: {
+      apiUrl: string;
+      setApiUrl: () => void;
+      isApiConnected: boolean;
+      setIsApiConnected: () => void;
+    }) => T
+  ) => {
+    const state = {
+      apiUrl: 'http://localhost:8000',
+      setApiUrl: vi.fn(),
+      isApiConnected: false,
+      setIsApiConnected: mocks.setIsApiConnected,
+    };
+    return selector ? selector(state) : (state as unknown as T);
+  },
 }));
 
 vi.mock('@/lib/api/client', () => ({
-  setApiUrl: setApiUrlMock,
+  setApiUrl: mocks.setApiUrl,
   getApiUrl: () => 'http://localhost:8000',
   getAdminToken: () => '',
-  setAdminToken: setAdminTokenMock,
+  setAdminToken: mocks.setAdminToken,
   healthCheck: vi.fn().mockResolvedValue(true),
   navigationApi: { audit: vi.fn().mockResolvedValue({}) },
 }));
 
 describe('SettingsPage', () => {
   beforeEach(() => {
-    setApiUrlMock.mockReset();
-    setAdminTokenMock.mockReset();
-    setIsApiConnectedMock.mockReset();
+    mocks.setApiUrl.mockReset();
+    mocks.setAdminToken.mockReset();
+    mocks.setIsApiConnected.mockReset();
   });
 
   it('renders API and token sections', () => {
@@ -43,6 +55,6 @@ describe('SettingsPage', () => {
       target: { value: 'secret' },
     });
     fireEvent.click(screen.getByText(/Tokenni saqlash/i));
-    expect(setAdminTokenMock).toHaveBeenCalledWith('secret');
+    expect(mocks.setAdminToken).toHaveBeenCalledWith('secret');
   });
 });

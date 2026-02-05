@@ -1,16 +1,17 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Canvas as FabricCanvas, Circle, Line, FabricImage } from 'fabric';
-import { 
-  ArrowLeft, 
-  MousePointer, 
-  MapPin, 
-  Link2, 
+import {
+  ArrowLeft,
+  MousePointer,
+  Hand,
+  MapPin,
+  Link2,
   Trash2,
   Save,
   ZoomIn,
   ZoomOut,
-  RotateCcw
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -32,6 +33,20 @@ import { resolveMediaUrl } from '@/lib/media';
 import { LoadingState } from '@/components/ui/loading-state';
 import { EmptyState } from '@/components/ui/empty-state';
 
+type FabricObjectWithFlags = { isConnection?: boolean; data?: unknown; left?: number; top?: number };
+type FabricEventLike = { target?: unknown; e?: unknown };
+
+const getWaypointFromFabricTarget = (target: unknown): Waypoint | undefined => {
+  if (!target || typeof target !== 'object') return undefined;
+  const data = (target as { data?: unknown }).data;
+  if (!data || typeof data !== 'object') return undefined;
+  const waypoint = (data as { waypoint?: unknown }).waypoint;
+  if (!waypoint || typeof waypoint !== 'object') return undefined;
+  const waypointId = (waypoint as { id?: unknown }).id;
+  if (typeof waypointId !== 'string') return undefined;
+  return waypoint as Waypoint;
+};
+
 const WAYPOINT_COLORS: Record<WaypointType, string> = {
   hallway: '#4A90D9',
   room: '#22C55E',
@@ -51,18 +66,25 @@ const WAYPOINT_LABELS: Record<WaypointType, string> = {
 };
 
 export default function FloorEditorPage() {
-  const { floorId } = useParams<{ floorId: string }>();
-  const navigate = useNavigate();
-  
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const connectionAnimationRef = useRef<number | null>(null);
-  const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  const [imageTransform, setImageTransform] = useState<{
-    scale: number;
-    offsetX: number;
-    offsetY: number;
-  } | null>(null);
-  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+	  const { floorId } = useParams<{ floorId: string }>();
+	  const navigate = useNavigate();
+	  
+	  const canvasRef = useRef<HTMLCanvasElement>(null);
+	  const canvasOuterRef = useRef<HTMLDivElement>(null);
+	  const connectionAnimationRef = useRef<number | null>(null);
+	  const backgroundImageRef = useRef<FabricImage | null>(null);
+	  const baseImageTransformRef = useRef<{ scale: number; offsetX: number; offsetY: number } | null>(null);
+	  const isSpacePressedRef = useRef(false);
+	  const isMouseOverCanvasRef = useRef(false);
+	  const isPanningRef = useRef(false);
+	  const lastPanClientRef = useRef<{ x: number; y: number } | null>(null);
+	  const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
+	  const [imageTransform, setImageTransform] = useState<{
+	    scale: number;
+	    offsetX: number;
+	    offsetY: number;
+	  } | null>(null);
+	  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
   
   const [floor, setFloor] = useState<Floor | null>(null);
   const [allFloors, setAllFloors] = useState<Floor[]>([]);
@@ -85,10 +107,20 @@ export default function FloorEditorPage() {
     setConnectionStartWaypoint,
     selectedWaypoint,
     setSelectedWaypoint,
-  } = useAppStore();
+	  } = useAppStore();
 
-  const [zoom, setZoom] = useState(1);
-  const [editingWaypoint, setEditingWaypoint] = useState<Waypoint | null>(null);
+	  const [zoom, setZoom] = useState(1);
+	  const imageTransformRef = useRef<typeof imageTransform>(null);
+	  const zoomRef = useRef(1);
+	  const [editingWaypoint, setEditingWaypoint] = useState<Waypoint | null>(null);
+
+	  useEffect(() => {
+	    imageTransformRef.current = imageTransform;
+	  }, [imageTransform]);
+
+	  useEffect(() => {
+	    zoomRef.current = zoom;
+	  }, [zoom]);
 
   const getTransform = () => imageTransform || { scale: 1, offsetX: 0, offsetY: 0 };
 
@@ -97,18 +129,39 @@ export default function FloorEditorPage() {
     return { x: x * scale + offsetX, y: y * scale + offsetY };
   };
 
-  const toImageCoords = (x: number, y: number) => {
-    const { scale, offsetX, offsetY } = getTransform();
-    const rawX = (x - offsetX) / scale;
-    const rawY = (y - offsetY) / scale;
-    if (imageSize?.width && imageSize?.height) {
-      return {
-        x: Math.max(0, Math.min(rawX, imageSize.width)),
-        y: Math.max(0, Math.min(rawY, imageSize.height)),
-      };
-    }
-    return { x: rawX, y: rawY };
-  };
+	  const toImageCoords = (x: number, y: number) => {
+	    const { scale, offsetX, offsetY } = getTransform();
+	    const rawX = (x - offsetX) / scale;
+	    const rawY = (y - offsetY) / scale;
+	    if (imageSize?.width && imageSize?.height) {
+	      return {
+	        x: Math.max(0, Math.min(rawX, imageSize.width)),
+	        y: Math.max(0, Math.min(rawY, imageSize.height)),
+	      };
+	    }
+	    return { x: rawX, y: rawY };
+	  };
+
+	  useEffect(() => {
+	    const onKeyDown = (e: KeyboardEvent) => {
+	      if (e.code !== 'Space') return;
+	      if (!isMouseOverCanvasRef.current) return;
+	      isSpacePressedRef.current = true;
+	      e.preventDefault();
+	    };
+
+	    const onKeyUp = (e: KeyboardEvent) => {
+	      if (e.code !== 'Space') return;
+	      isSpacePressedRef.current = false;
+	    };
+
+	    window.addEventListener('keydown', onKeyDown);
+	    window.addEventListener('keyup', onKeyUp);
+	    return () => {
+	      window.removeEventListener('keydown', onKeyDown);
+	      window.removeEventListener('keyup', onKeyUp);
+	    };
+	  }, []);
 
   const verticalConnections = useMemo(() => {
     if (!editingWaypoint) return [];
@@ -155,7 +208,7 @@ export default function FloorEditorPage() {
     const animate = () => {
       offset = (offset + 1) % 1000;
       fabricCanvas.getObjects().forEach((obj) => {
-        if ((obj as any).isConnection) {
+        if ((obj as unknown as FabricObjectWithFlags).isConnection) {
           obj.set('strokeDashOffset', offset);
         }
       });
@@ -227,31 +280,150 @@ export default function FloorEditorPage() {
   }, [editingWaypoint?.id]);
 
   // Initialize canvas
-  useEffect(() => {
-    if (!canvasRef.current || !floor) return;
+	  useEffect(() => {
+	    if (!canvasRef.current || !floor) return;
 
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: 1200,
-      height: 800,
-      backgroundColor: '#1a1a2e',
-      selection: false,
-    });
+	    const canvas = new FabricCanvas(canvasRef.current, {
+	      width: 1,
+	      height: 1,
+	      backgroundColor: '#1a1a2e',
+	      selection: false,
+	    });
 
-    setFabricCanvas(canvas);
+	    setFabricCanvas(canvas);
 
-    return () => {
-      canvas.dispose();
-    };
-  }, [floor]);
+	    return () => {
+	      canvas.dispose();
+	    };
+	  }, [floor]);
 
-  // Load floor image
-  useEffect(() => {
-    if (!fabricCanvas) return;
-    if (!floor?.image_url) {
-      setImageTransform(null);
-      setImageSize(null);
-      return;
-    }
+	  const applyTransform = useCallback(
+	    (next: { scale: number; offsetX: number; offsetY: number }, opts?: { updateZoom?: boolean }) => {
+	      if (!fabricCanvas) return;
+	      const bg = backgroundImageRef.current;
+	      if (bg) {
+	        bg.set({
+	          scaleX: next.scale,
+	          scaleY: next.scale,
+	          left: next.offsetX,
+	          top: next.offsetY,
+	        });
+	        bg.setCoords();
+	      }
+	      setImageTransform(next);
+
+	      const base = baseImageTransformRef.current;
+	      const shouldUpdateZoom = opts?.updateZoom ?? true;
+	      if (shouldUpdateZoom && base?.scale) {
+	        setZoom(next.scale / base.scale);
+	      }
+
+	      fabricCanvas.requestRenderAll();
+	    },
+	    [fabricCanvas]
+	  );
+
+	  const panBy = useCallback(
+	    (dx: number, dy: number) => {
+	      const current = imageTransform || baseImageTransformRef.current;
+	      if (!current) return;
+	      applyTransform(
+	        {
+	          ...current,
+	          offsetX: current.offsetX + dx,
+	          offsetY: current.offsetY + dy,
+	        },
+	        { updateZoom: false }
+	      );
+	    },
+	    [applyTransform, imageTransform]
+	  );
+
+	  const zoomTo = useCallback(
+	    (nextZoom: number, anchor: { x: number; y: number }) => {
+	      const base = baseImageTransformRef.current;
+	      const current = imageTransform || base;
+	      if (!base || !current) return;
+
+	      const clamped = Math.max(0.25, Math.min(nextZoom, 6));
+	      const newScale = base.scale * clamped;
+	      const ratio = newScale / current.scale;
+	      const next = {
+	        scale: newScale,
+	        offsetX: anchor.x - (anchor.x - current.offsetX) * ratio,
+	        offsetY: anchor.y - (anchor.y - current.offsetY) * ratio,
+	      };
+	      applyTransform(next, { updateZoom: true });
+	    },
+	    [applyTransform, imageTransform]
+	  );
+
+	  // Responsive canvas sizing + keep current view
+	  useEffect(() => {
+	    if (!fabricCanvas) return;
+	    if (!canvasOuterRef.current) return;
+
+	    const outer = canvasOuterRef.current;
+
+	    const updateSize = () => {
+	      const rect = outer.getBoundingClientRect();
+	      const availableWidth = Math.max(1, Math.floor(rect.width));
+	      const availableHeight = Math.max(1, Math.floor(rect.height));
+
+	      // Canvas should grow/shrink with the viewport/container.
+	      const width = availableWidth;
+	      const height = availableHeight;
+
+	      const prevWidth = fabricCanvas.getWidth();
+	      const prevHeight = fabricCanvas.getHeight();
+
+	      fabricCanvas.setDimensions({ width, height }, { cssOnly: false });
+
+	      if (!imageSize?.width || !imageSize?.height) {
+	        fabricCanvas.requestRenderAll();
+	        return;
+	      }
+
+	      const fitScale = Math.min(width / imageSize.width, height / imageSize.height) * 0.98;
+	      const fitOffsetX = (width - imageSize.width * fitScale) / 2;
+	      const fitOffsetY = (height - imageSize.height * fitScale) / 2;
+	      baseImageTransformRef.current = { scale: fitScale, offsetX: fitOffsetX, offsetY: fitOffsetY };
+
+	      const old = imageTransformRef.current;
+	      const baseZoom =
+	        typeof zoomRef.current === 'number' && Number.isFinite(zoomRef.current) ? zoomRef.current : 1;
+	      const nextScale = fitScale * baseZoom;
+
+	      if (!old || old.scale === 0) {
+	        applyTransform({ scale: nextScale, offsetX: fitOffsetX, offsetY: fitOffsetY }, { updateZoom: false });
+	        return;
+	      }
+
+	      // Keep the same image point under the old canvas center.
+	      const oldCenterImgX = (prevWidth / 2 - old.offsetX) / old.scale;
+	      const oldCenterImgY = (prevHeight / 2 - old.offsetY) / old.scale;
+	      const nextOffsetX = width / 2 - oldCenterImgX * nextScale;
+	      const nextOffsetY = height / 2 - oldCenterImgY * nextScale;
+	      applyTransform({ scale: nextScale, offsetX: nextOffsetX, offsetY: nextOffsetY }, { updateZoom: false });
+	    };
+
+	    const ro = new ResizeObserver(updateSize);
+	    ro.observe(outer);
+	    updateSize();
+
+	    return () => ro.disconnect();
+	  }, [applyTransform, fabricCanvas, imageSize]);
+
+	  // Load floor image
+	  useEffect(() => {
+	    if (!fabricCanvas) return;
+	    if (!floor?.image_url) {
+	      setImageTransform(null);
+	      setImageSize(null);
+	      backgroundImageRef.current = null;
+	      baseImageTransformRef.current = null;
+	      return;
+	    }
 
     const imageUrl = resolveMediaUrl(floor.image_url);
 
@@ -260,39 +432,39 @@ export default function FloorEditorPage() {
       return await FabricImage.fromURL(imageUrl, options);
     };
 
-    const applyImage = (img: FabricImage) => {
-      // Remove existing background images
-      fabricCanvas.getObjects().forEach((obj) => {
-        if (obj.type === 'image') {
-          fabricCanvas.remove(obj);
-        }
-      });
+	    const applyImage = (img: FabricImage) => {
+	      // Remove existing background images
+	      fabricCanvas.getObjects().forEach((obj) => {
+	        if (obj.type === 'image') {
+	          fabricCanvas.remove(obj);
+	        }
+	      });
 
-      // Scale image to fit canvas
-      const canvasWidth = fabricCanvas.width || 1200;
-      const canvasHeight = fabricCanvas.height || 800;
+	      backgroundImageRef.current = img;
+	      img.set({
+	        selectable: false,
+	        evented: false,
+	      });
 
-      const scale =
-        Math.min(canvasWidth / (img.width || 1), canvasHeight / (img.height || 1)) * 0.9;
+	      fabricCanvas.add(img);
+	      fabricCanvas.sendObjectToBack(img);
 
-      const offsetX = (canvasWidth - (img.width || 0) * scale) / 2;
-      const offsetY = (canvasHeight - (img.height || 0) * scale) / 2;
+	      const width = img.width || 0;
+	      const height = img.height || 0;
+	      setImageSize({ width, height });
 
-      img.set({
-        scaleX: scale,
-        scaleY: scale,
-        left: offsetX,
-        top: offsetY,
-        selectable: false,
-        evented: false,
-      });
-
-      fabricCanvas.add(img);
-      fabricCanvas.sendObjectToBack(img);
-      fabricCanvas.renderAll();
-      setImageTransform({ scale, offsetX, offsetY });
-      setImageSize({ width: img.width || 0, height: img.height || 0 });
-    };
+	      const canvasWidth = fabricCanvas.getWidth();
+	      const canvasHeight = fabricCanvas.getHeight();
+	      if (width > 0 && height > 0 && canvasWidth > 0 && canvasHeight > 0) {
+	        const fitScale = Math.min(canvasWidth / width, canvasHeight / height) * 0.98;
+	        const fitOffsetX = (canvasWidth - width * fitScale) / 2;
+	        const fitOffsetY = (canvasHeight - height * fitScale) / 2;
+	        baseImageTransformRef.current = { scale: fitScale, offsetX: fitOffsetX, offsetY: fitOffsetY };
+	        applyTransform({ scale: fitScale, offsetX: fitOffsetX, offsetY: fitOffsetY }, { updateZoom: true });
+	      } else {
+	        fabricCanvas.requestRenderAll();
+	      }
+	    };
 
     loadImage(true)
       .then(applyImage)
@@ -305,7 +477,7 @@ export default function FloorEditorPage() {
             toast.error("Rasmni yuklashda xato");
           });
       });
-  }, [fabricCanvas, floor?.image_url]);
+	  }, [applyTransform, fabricCanvas, floor?.image_url]);
 
   // Draw connections
   const drawConnections = useCallback(() => {
@@ -323,21 +495,21 @@ export default function FloorEditorPage() {
       if (fromWp && toWp) {
         const fromPoint = toCanvasCoords(fromWp.x, fromWp.y);
         const toPoint = toCanvasCoords(toWp.x, toWp.y);
-        const line = new Line([fromPoint.x, fromPoint.y, toPoint.x, toPoint.y], {
-          stroke: '#38BDF8',
-          strokeWidth: 3,
-          strokeLineCap: 'round',
-          strokeDashArray: [12, 8],
-          strokeDashOffset: 0,
-          selectable: false,
-          evented: false,
-          opacity: 0.85,
-        });
-        (line as any).isConnection = true;
-        
-        fabricCanvas.add(line);
-      }
-    });
+	        const line = new Line([fromPoint.x, fromPoint.y, toPoint.x, toPoint.y], {
+	          stroke: '#38BDF8',
+	          strokeWidth: 3,
+	          strokeLineCap: 'round',
+	          strokeDashArray: [12, 8],
+	          strokeDashOffset: 0,
+	          selectable: false,
+	          evented: false,
+	          opacity: 0.85,
+	        });
+	        (line as unknown as FabricObjectWithFlags).isConnection = true;
+	        
+	        fabricCanvas.add(line);
+	      }
+	    });
 
     fabricCanvas.renderAll();
     if (connections.length > 0) {
@@ -410,18 +582,112 @@ export default function FloorEditorPage() {
     return () => stopConnectionAnimation();
   }, [stopConnectionAnimation]);
 
-  // Handle canvas click
-  useEffect(() => {
-    if (!fabricCanvas) return;
+	  const isPanModeActive = useCallback(() => {
+	    return editorMode === 'pan' || isSpacePressedRef.current;
+	  }, [editorMode]);
 
-    const handleMouseDown = async (e: any) => {
-      const pointer = fabricCanvas.getPointer(e.e);
-      const target = fabricCanvas.findTarget(e.e);
+	  // Pan + wheel zoom interactions
+	  useEffect(() => {
+	    if (!fabricCanvas) return;
 
-      if (editorMode === 'waypoint') {
-        if (floor?.image_url && !imageTransform) {
-          toast.error("Rasm yuklanmoqda, iltimos kuting");
-          return;
+	    const handleMouseWheel = (e: unknown) => {
+	      const evt = e as FabricEventLike;
+	      const wheel = evt.e as WheelEvent | undefined;
+	      if (!wheel) return;
+	      if (floor?.image_url && !imageTransformRef.current) return;
+
+	      wheel.preventDefault();
+	      wheel.stopPropagation();
+
+	      const pointer = fabricCanvas.getPointer(wheel);
+	      const delta = wheel.deltaY;
+	      const factor = Math.pow(1.0015, -delta);
+	      const next = zoomRef.current * factor;
+	      zoomTo(next, { x: pointer.x, y: pointer.y });
+	    };
+
+	    const handleMouseDownPan = (e: unknown) => {
+	      const evt = e as FabricEventLike;
+	      const mouse = evt.e as MouseEvent | undefined;
+	      if (!mouse) return;
+
+	      // Middle mouse always pans. Left mouse pans only when pan tool or Space held.
+	      const shouldPan =
+	        mouse.button === 1 || (mouse.button === 0 && isPanModeActive());
+	      if (!shouldPan) return;
+
+	      isPanningRef.current = true;
+	      lastPanClientRef.current = { x: mouse.clientX, y: mouse.clientY };
+	      fabricCanvas.defaultCursor = 'grabbing';
+	      fabricCanvas.setCursor('grabbing');
+	    };
+
+	    const handleMouseMovePan = (e: unknown) => {
+	      if (!isPanningRef.current) return;
+	      const evt = e as FabricEventLike;
+	      const mouse = evt.e as MouseEvent | undefined;
+	      if (!mouse) return;
+	      const last = lastPanClientRef.current;
+	      if (!last) {
+	        lastPanClientRef.current = { x: mouse.clientX, y: mouse.clientY };
+	        return;
+	      }
+
+	      const dx = mouse.clientX - last.x;
+	      const dy = mouse.clientY - last.y;
+	      lastPanClientRef.current = { x: mouse.clientX, y: mouse.clientY };
+	      panBy(dx, dy);
+	    };
+
+	    const endPan = () => {
+	      isPanningRef.current = false;
+	      lastPanClientRef.current = null;
+	      fabricCanvas.defaultCursor = isPanModeActive() ? 'grab' : 'default';
+	      fabricCanvas.setCursor(fabricCanvas.defaultCursor);
+	    };
+
+	    fabricCanvas.on('mouse:wheel', handleMouseWheel);
+	    fabricCanvas.on('mouse:down', handleMouseDownPan);
+	    fabricCanvas.on('mouse:move', handleMouseMovePan);
+	    fabricCanvas.on('mouse:up', endPan);
+	    fabricCanvas.on('mouse:out', endPan);
+
+	    return () => {
+	      fabricCanvas.off('mouse:wheel', handleMouseWheel);
+	      fabricCanvas.off('mouse:down', handleMouseDownPan);
+	      fabricCanvas.off('mouse:move', handleMouseMovePan);
+	      fabricCanvas.off('mouse:up', endPan);
+	      fabricCanvas.off('mouse:out', endPan);
+	    };
+	  }, [fabricCanvas, floor?.image_url, isPanModeActive, panBy, zoomTo]);
+
+	  useEffect(() => {
+	    if (!fabricCanvas) return;
+	    fabricCanvas.defaultCursor = isPanModeActive() ? 'grab' : 'default';
+	    fabricCanvas.setCursor(fabricCanvas.defaultCursor);
+	  }, [fabricCanvas, isPanModeActive]);
+
+	  // Handle canvas click
+		  useEffect(() => {
+		    if (!fabricCanvas) return;
+
+		    const handleMouseDown = async (e: unknown) => {
+		      const evt = e as FabricEventLike;
+		      const pointer = fabricCanvas.getPointer(evt.e as MouseEvent);
+		      const target = fabricCanvas.findTarget(evt.e as MouseEvent);
+
+	      // If panning, do not create/select/delete items.
+	      if (isPanningRef.current) return;
+	      const mouse = evt.e as MouseEvent | undefined;
+	      if (mouse) {
+	        const shouldPan = mouse.button === 1 || (mouse.button === 0 && isPanModeActive());
+	        if (shouldPan) return;
+	      }
+
+	      if (editorMode === 'waypoint') {
+	        if (floor?.image_url && !imageTransform) {
+	          toast.error("Rasm yuklanmoqda, iltimos kuting");
+	          return;
         }
         const imagePoint = toImageCoords(pointer.x, pointer.y);
         // Create new waypoint
@@ -445,10 +711,10 @@ export default function FloorEditorPage() {
         } catch (error) {
           toast.error('Nuqta yaratishda xato');
         }
-      } else if (editorMode === 'connection' && target) {
-        const wpData = (target as any).data?.waypoint as Waypoint | undefined;
-        
-        if (wpData) {
+	      } else if (editorMode === 'connection' && target) {
+	        const wpData = getWaypointFromFabricTarget(target);
+	        
+	        if (wpData) {
           if (!connectionStartWaypoint) {
             setConnectionStartWaypoint(wpData);
             toast.info(`Boshlanish nuqtasi: ${wpData.label || wpData.id}`);
@@ -477,17 +743,17 @@ export default function FloorEditorPage() {
             setConnectionStartWaypoint(null);
           }
         }
-      } else if (editorMode === 'select' && target) {
-        const wpData = (target as any).data?.waypoint as Waypoint | undefined;
-        if (wpData) {
-          setSelectedWaypoint(wpData);
-          setEditingWaypoint(wpData);
-        }
-      } else if (editorMode === 'delete' && target) {
-        const wpData = (target as any).data?.waypoint as Waypoint | undefined;
-        if (wpData) {
-          try {
-            await waypointsApi.delete(wpData.id);
+	      } else if (editorMode === 'select' && target) {
+	        const wpData = getWaypointFromFabricTarget(target);
+	        if (wpData) {
+	          setSelectedWaypoint(wpData);
+	          setEditingWaypoint(wpData);
+	        }
+	      } else if (editorMode === 'delete' && target) {
+	        const wpData = getWaypointFromFabricTarget(target);
+	        if (wpData) {
+	          try {
+	            await waypointsApi.delete(wpData.id);
             setWaypoints((prev) => prev.filter((w) => w.id !== wpData.id));
             setConnections((prev) => 
               prev.filter((c) => c.from_waypoint_id !== wpData.id && c.to_waypoint_id !== wpData.id)
@@ -505,46 +771,49 @@ export default function FloorEditorPage() {
     return () => {
       fabricCanvas.off('mouse:down', handleMouseDown);
     };
-  }, [
-    fabricCanvas,
-    editorMode,
-    selectedWaypointType,
-    connectionStartWaypoint,
-    floorId,
-    imageTransform,
-    imageSize,
-    floor?.image_url,
-  ]);
+	  }, [
+	    fabricCanvas,
+	    editorMode,
+	    isPanModeActive,
+	    selectedWaypointType,
+	    connectionStartWaypoint,
+	    floorId,
+	    imageTransform,
+	    imageSize,
+	    floor?.image_url,
+	  ]);
 
   // Handle object moving (drag waypoint)
-  useEffect(() => {
-    if (!fabricCanvas) return;
+	  useEffect(() => {
+	    if (!fabricCanvas) return;
 
-    const handleObjectMoving = (e: any) => {
-      if (editorMode !== 'select') return;
-      if (floor?.image_url && !imageTransform) return;
-      
-      const target = e.target;
-      const wpData = target?.data?.waypoint as Waypoint | undefined;
-      
-      if (wpData) {
-        // Using center origin, so position is the center
-        const imagePoint = toImageCoords(target.left, target.top);
-        wpData.x = Math.round(imagePoint.x);
-        wpData.y = Math.round(imagePoint.y);
-      }
-    };
+	    const handleObjectMoving = (e: unknown) => {
+	      if (editorMode !== 'select') return;
+	      if (floor?.image_url && !imageTransform) return;
+	      
+	      const target = (e as FabricEventLike).target;
+	      const wpData = getWaypointFromFabricTarget(target);
+	      
+	      if (wpData) {
+	        // Using center origin, so position is the center
+	        const { left, top } = (target as unknown as FabricObjectWithFlags) || {};
+	        const imagePoint = toImageCoords(left ?? 0, top ?? 0);
+	        wpData.x = Math.round(imagePoint.x);
+	        wpData.y = Math.round(imagePoint.y);
+	      }
+	    };
 
-    const handleObjectModified = async (e: any) => {
-      const target = e.target;
-      const wpData = target?.data?.waypoint as Waypoint | undefined;
-      
-      if (wpData) {
-        try {
-          if (floor?.image_url && !imageTransform) return;
-          const imagePoint = toImageCoords(target.left, target.top);
-          const newX = Math.round(imagePoint.x);
-          const newY = Math.round(imagePoint.y);
+	    const handleObjectModified = async (e: unknown) => {
+	      const target = (e as FabricEventLike).target;
+	      const wpData = getWaypointFromFabricTarget(target);
+	      
+	      if (wpData) {
+	        try {
+	          if (floor?.image_url && !imageTransform) return;
+	          const { left, top } = (target as unknown as FabricObjectWithFlags) || {};
+	          const imagePoint = toImageCoords(left ?? 0, top ?? 0);
+	          const newX = Math.round(imagePoint.x);
+	          const newY = Math.round(imagePoint.y);
           
           await waypointsApi.update(wpData.id, {
             x: newX,
@@ -573,29 +842,24 @@ export default function FloorEditorPage() {
     };
   }, [fabricCanvas, editorMode, imageTransform, imageSize, floor?.image_url]);
 
-  // Zoom functions
+  // Zoom functions (custom transform; do not use Fabric zoom)
   const handleZoomIn = () => {
     if (!fabricCanvas) return;
-    const newZoom = Math.min(zoom * 1.2, 3);
-    setZoom(newZoom);
-    fabricCanvas.setZoom(newZoom);
-    fabricCanvas.renderAll();
+    const anchor = { x: fabricCanvas.getWidth() / 2, y: fabricCanvas.getHeight() / 2 };
+    zoomTo(zoom * 1.2, anchor);
   };
 
   const handleZoomOut = () => {
     if (!fabricCanvas) return;
-    const newZoom = Math.max(zoom / 1.2, 0.5);
-    setZoom(newZoom);
-    fabricCanvas.setZoom(newZoom);
-    fabricCanvas.renderAll();
+    const anchor = { x: fabricCanvas.getWidth() / 2, y: fabricCanvas.getHeight() / 2 };
+    zoomTo(zoom / 1.2, anchor);
   };
 
   const handleResetZoom = () => {
     if (!fabricCanvas) return;
-    setZoom(1);
-    fabricCanvas.setZoom(1);
-    fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-    fabricCanvas.renderAll();
+    const base = baseImageTransformRef.current;
+    if (!base) return;
+    applyTransform(base, { updateZoom: true });
   };
 
   // Update waypoint with room
@@ -754,39 +1018,47 @@ export default function FloorEditorPage() {
             <Label className="text-xs uppercase tracking-wider text-muted-foreground">
               Asboblar
             </Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant={editorMode === 'select' ? 'default' : 'outline'}
-                className="justify-start gap-2"
-                onClick={() => setEditorMode('select')}
-              >
-                <MousePointer className="w-4 h-4" />
-                Tanlash
-              </Button>
-              <Button
-                variant={editorMode === 'waypoint' ? 'default' : 'outline'}
-                className="justify-start gap-2"
-                onClick={() => setEditorMode('waypoint')}
-              >
-                <MapPin className="w-4 h-4" />
-                Nuqta
-              </Button>
-              <Button
-                variant={editorMode === 'connection' ? 'default' : 'outline'}
-                className="justify-start gap-2"
-                onClick={() => setEditorMode('connection')}
-              >
-                <Link2 className="w-4 h-4" />
-                Bog'lash
-              </Button>
-              <Button
-                variant={editorMode === 'delete' ? 'destructive' : 'outline'}
-                className="justify-start gap-2"
-                onClick={() => setEditorMode('delete')}
-              >
-                <Trash2 className="w-4 h-4" />
-                O'chirish
-              </Button>
+	            <div className="grid grid-cols-2 gap-2">
+	              <Button
+	                variant={editorMode === 'select' ? 'default' : 'outline'}
+	                className="justify-start gap-2"
+	                onClick={() => setEditorMode('select')}
+	              >
+	                <MousePointer className="w-4 h-4" />
+	                Tanlash
+	              </Button>
+	              <Button
+	                variant={editorMode === 'pan' ? 'default' : 'outline'}
+	                className="justify-start gap-2"
+	                onClick={() => setEditorMode('pan')}
+	              >
+	                <Hand className="w-4 h-4" />
+	                Surish
+	              </Button>
+	              <Button
+	                variant={editorMode === 'waypoint' ? 'default' : 'outline'}
+	                className="justify-start gap-2"
+	                onClick={() => setEditorMode('waypoint')}
+	              >
+	                <MapPin className="w-4 h-4" />
+	                Nuqta
+	              </Button>
+	              <Button
+	                variant={editorMode === 'connection' ? 'default' : 'outline'}
+	                className="justify-start gap-2"
+	                onClick={() => setEditorMode('connection')}
+	              >
+	                <Link2 className="w-4 h-4" />
+	                Bog'lash
+	              </Button>
+	              <Button
+	                variant={editorMode === 'delete' ? 'destructive' : 'outline'}
+	                className="justify-start gap-2"
+	                onClick={() => setEditorMode('delete')}
+	              >
+	                <Trash2 className="w-4 h-4" />
+	                O'chirish
+	              </Button>
             </div>
           </div>
 
@@ -869,12 +1141,24 @@ export default function FloorEditorPage() {
           </div>
         </div>
 
-        {/* Canvas Container */}
-        <div className="flex-1 p-4 overflow-auto bg-muted/30 min-h-[45vh] lg:min-h-0">
-          <div className="canvas-container w-full max-w-full">
-            <canvas ref={canvasRef} />
-          </div>
-        </div>
+	        {/* Canvas Container */}
+	        <div className="flex-1 p-4 overflow-hidden bg-muted/30 min-h-[45vh] lg:min-h-0">
+	          <div
+	            ref={canvasOuterRef}
+	            className="w-full h-full flex items-center justify-center"
+	            onMouseEnter={() => {
+	              isMouseOverCanvasRef.current = true;
+	            }}
+	            onMouseLeave={() => {
+	              isMouseOverCanvasRef.current = false;
+	              isSpacePressedRef.current = false;
+	              isPanningRef.current = false;
+	              lastPanClientRef.current = null;
+	            }}
+	          >
+	            <canvas ref={canvasRef} />
+	          </div>
+	        </div>
 
         {/* Properties Panel */}
         {editingWaypoint && (

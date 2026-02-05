@@ -13,8 +13,8 @@ interface AppState {
   setSelectedFloorId: (id: number | null) => void;
 
   // Editor State
-  editorMode: 'select' | 'waypoint' | 'connection' | 'delete';
-  setEditorMode: (mode: 'select' | 'waypoint' | 'connection' | 'delete') => void;
+  editorMode: 'select' | 'pan' | 'waypoint' | 'connection' | 'delete';
+  setEditorMode: (mode: 'select' | 'pan' | 'waypoint' | 'connection' | 'delete') => void;
 
   selectedWaypointType: 'hallway' | 'room' | 'stairs' | 'elevator' | 'hall';
   setSelectedWaypointType: (type: 'hallway' | 'room' | 'stairs' | 'elevator' | 'hall') => void;

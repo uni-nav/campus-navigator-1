@@ -2,35 +2,45 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@/test/utils';
 import LoginPage from '@/pages/LoginPage';
 
-const mockNavigate = vi.fn();
-const setApiUrlMock = vi.fn();
-const setAdminTokenMock = vi.fn();
+const mocks = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  setApiUrl: vi.fn(),
+  setAdminToken: vi.fn(),
+}));
 
 vi.mock('react-router-dom', async () => {
   const actual = await vi.importActual<typeof import('react-router-dom')>('react-router-dom');
   return {
     ...actual,
-    useNavigate: () => mockNavigate,
+    useNavigate: () => mocks.navigate,
   };
 });
 
+const storeMocks = vi.hoisted(() => ({
+  setApiUrl: vi.fn(),
+}));
+
 vi.mock('@/lib/store', () => ({
-  useAppStore: () => ({ setApiUrl: vi.fn() }),
+  useAppStore: <T,>(selector?: (s: { setApiUrl: () => void }) => T) => {
+    const state = { setApiUrl: storeMocks.setApiUrl };
+    return selector ? selector(state) : (state as unknown as T);
+  },
 }));
 
 vi.mock('@/lib/api/client', () => ({
   getApiUrl: () => 'http://localhost:8000',
-  setApiUrl: setApiUrlMock,
+  setApiUrl: mocks.setApiUrl,
   getAdminToken: () => '',
-  setAdminToken: setAdminTokenMock,
+  setAdminToken: mocks.setAdminToken,
   healthCheck: vi.fn().mockResolvedValue(true),
 }));
 
 describe('LoginPage', () => {
   beforeEach(() => {
-    mockNavigate.mockReset();
-    setApiUrlMock.mockReset();
-    setAdminTokenMock.mockReset();
+    mocks.navigate.mockReset();
+    mocks.setApiUrl.mockReset();
+    mocks.setAdminToken.mockReset();
+    storeMocks.setApiUrl.mockReset();
   });
 
   it('renders login form', () => {
@@ -45,8 +55,8 @@ describe('LoginPage', () => {
     fireEvent.change(screen.getByLabelText(/Admin token/i), {
       target: { value: 'test-token' },
     });
-    fireEvent.click(screen.getByText(/Kirish/i));
-    expect(setAdminTokenMock).toHaveBeenCalledWith('test-token');
-    expect(mockNavigate).toHaveBeenCalledWith('/floors', { replace: true });
+    fireEvent.click(screen.getByRole('button', { name: /^Kirish$/i }));
+    expect(mocks.setAdminToken).toHaveBeenCalledWith('test-token');
+    expect(mocks.navigate).toHaveBeenCalledWith('/floors', { replace: true });
   });
 });

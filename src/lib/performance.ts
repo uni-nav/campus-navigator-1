@@ -153,7 +153,9 @@ export function measureEvent(name: string, startMark: string, endMark: string): 
  * Get current memory usage (if available)
  */
 export function getMemoryUsage(): { usedJSHeapSize: number; totalJSHeapSize: number } | null {
-    const memory = (performance as any).memory;
+    type PerformanceMemory = { usedJSHeapSize: number; totalJSHeapSize: number };
+    type PerformanceWithMemory = Performance & { memory?: PerformanceMemory };
+    const memory = (performance as PerformanceWithMemory).memory;
     if (!memory) return null;
 
     return {

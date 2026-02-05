@@ -34,18 +34,20 @@ describe('Logger', () => {
         it('should log info messages in development', () => {
             logger.info('Test info message');
             expect(console.log).toHaveBeenCalled();
-            const call = (console.log as any).mock.calls[0];
-            expect(call[0]).toContain('INFO:');
-            expect(call[1]).toBe('Test info message');
+            const call = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+            const [prefix, message] = call as [string, string, ...unknown[]];
+            expect(prefix).toContain('INFO:');
+            expect(message).toBe('Test info message');
         });
 
         it('should log info with data', () => {
             const data = { userId: 123 };
             logger.info('User action', data);
             expect(console.log).toHaveBeenCalled();
-            const call = (console.log as any).mock.calls[0];
-            expect(call[1]).toBe('User action');
-            expect(call[2]).toEqual(data);
+            const call = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+            const [, message, payload] = call as [unknown, string, unknown];
+            expect(message).toBe('User action');
+            expect(payload).toEqual(data);
         });
     });
 
@@ -53,9 +55,10 @@ describe('Logger', () => {
         it('should log warnings', () => {
             logger.warn('Warning message');
             expect(console.warn).toHaveBeenCalled();
-            const call = (console.warn as any).mock.calls[0];
-            expect(call[0]).toContain('WARN:');
-            expect(call[1]).toBe('Warning message');
+            const call = (console.warn as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+            const [prefix, message] = call as [string, string, ...unknown[]];
+            expect(prefix).toContain('WARN:');
+            expect(message).toBe('Warning message');
         });
     });
 
@@ -64,18 +67,20 @@ describe('Logger', () => {
             const error = new Error('Test error');
             logger.error('Error occurred', error);
             expect(console.error).toHaveBeenCalled();
-            const call = (console.error as any).mock.calls[0];
-            expect(call[0]).toContain('ERROR:');
-            expect(call[1]).toBe('Error occurred');
-            expect(call[2]).toBe(error);
+            const call = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+            const [prefix, message, err] = call as [string, string, unknown];
+            expect(prefix).toContain('ERROR:');
+            expect(message).toBe('Error occurred');
+            expect(err).toBe(error);
         });
 
         it('should log errors without error object', () => {
             logger.error('Simple error message');
             expect(console.error).toHaveBeenCalled();
-            const call = (console.error as any).mock.calls[0];
-            expect(call[0]).toContain('ERROR:');
-            expect(call[1]).toBe('Simple error message');
+            const call = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+            const [prefix, message] = call as [string, string, ...unknown[]];
+            expect(prefix).toContain('ERROR:');
+            expect(message).toBe('Simple error message');
         });
     });
 
@@ -83,9 +88,10 @@ describe('Logger', () => {
         it('should log debug messages when debug is enabled', () => {
             logger.debug('Debug info', { details: 'test' });
             expect(console.log).toHaveBeenCalled();
-            const call = (console.log as any).mock.calls[0];
-            expect(call[0]).toContain('DEBUG:');
-            expect(call[1]).toBe('Debug info');
+            const call = (console.log as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+            const [prefix, message] = call as [string, string, ...unknown[]];
+            expect(prefix).toContain('DEBUG:');
+            expect(message).toBe('Debug info');
         });
     });
 
@@ -94,10 +100,11 @@ describe('Logger', () => {
             const error = new Error('API failed');
             logger.apiError('/api/rooms', error);
             expect(console.error).toHaveBeenCalled();
-            const call = (console.error as any).mock.calls[0];
-            expect(call[0]).toContain('ERROR:');
-            expect(call[1]).toContain('/api/rooms');
-            expect(call[2]).toBe(error);
+            const call = (console.error as unknown as { mock: { calls: unknown[][] } }).mock.calls[0];
+            const [prefix, message, err] = call as [string, string, unknown];
+            expect(prefix).toContain('ERROR:');
+            expect(message).toContain('/api/rooms');
+            expect(err).toBe(error);
         });
     });
 });
