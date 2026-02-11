@@ -120,9 +120,10 @@ export default function FloorsPage() {
                     type="number"
                     aria-label="Qavat raqami"
                     value={newFloor.floor_number}
-                    onChange={(e) =>
-                      setNewFloor({ ...newFloor, floor_number: parseInt(e.target.value) || 1 })
-                    }
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setNewFloor({ ...newFloor, floor_number: isNaN(val) ? 0 : val });
+                    }}
                   />
                 </div>
                 <Button onClick={handleCreate} className="w-full">
@@ -177,10 +178,10 @@ export default function FloorsPage() {
                     <Layers className="w-12 h-12 text-muted-foreground/50" />
                   </div>
                 )}
-                
+
                 {/* Overlay */}
                 <div className="absolute inset-0 bg-gradient-to-t from-background/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                
+
                 {/* Actions */}
                 <div className="absolute bottom-3 right-3 flex gap-2 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity" data-stop-nav>
                   <label
