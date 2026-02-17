@@ -5,7 +5,7 @@
 
 export const config = {
     // API Configuration
-    apiUrl: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+    apiUrl: import.meta.env.VITE_API_URL || 'https://map.ranch.university/api/',
 
     // App Info
     appName: import.meta.env.VITE_APP_NAME || 'University Navigation',

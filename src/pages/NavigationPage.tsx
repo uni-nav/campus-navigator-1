@@ -604,7 +604,7 @@ export default function NavigationPage() {
       observer.disconnect();
       stopPathAnimation();
     };
-  }, [fabricCanvas, drawFloorWithPath]);
+  }, [fabricCanvas, drawFloorWithPath, stopPathAnimation]);
 
   // Auto-select first kiosk for convenience
   useEffect(() => {
@@ -644,7 +644,8 @@ export default function NavigationPage() {
   const getFloorsInPath = useCallback((path: PathStep[]): number[] => {
     const ordered: number[] = [];
     path.forEach((step) => {
-      if (!ordered.includes(step.floor_id)) {
+      const lastFloorId = ordered[ordered.length - 1];
+      if (lastFloorId !== step.floor_id) {
         ordered.push(step.floor_id);
       }
     });
@@ -819,6 +820,7 @@ export default function NavigationPage() {
                     size="sm"
                     className="gap-2"
                     onClick={() => setStartMode('kiosk')}
+                    disabled={kiosks.length === 0}
                   >
                     <Monitor className="w-4 h-4" />
                     Kiosk
@@ -849,7 +851,7 @@ export default function NavigationPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {kiosks.length === 0 && (
-                        <SelectItem value="" disabled>
+                        <SelectItem value="no-kiosks" disabled>
                           Kiosklar topilmadi
                         </SelectItem>
                       )}

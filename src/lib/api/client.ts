@@ -24,6 +24,9 @@ import {
 
 const API_URL_KEY = 'university_nav_api_url';
 const ADMIN_TOKEN_KEY = 'university_nav_admin_token';
+type ClientOptions = {
+  suppressErrorToast?: boolean;
+};
 
 const normalizeApiUrl = (raw: string): string => {
   const trimmed = raw.trim();
@@ -82,7 +85,8 @@ export const setAdminToken = (token: string): void => {
   sessionStorage.setItem(ADMIN_TOKEN_KEY, trimmed);
 };
 
-const createClient = (): AxiosInstance => {
+const createClient = (options: ClientOptions = {}): AxiosInstance => {
+  const { suppressErrorToast = false } = options;
   const adminToken = getAdminToken();
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -105,16 +109,26 @@ const createClient = (): AxiosInstance => {
       logger.apiError(error.config?.url || 'unknown', error);
 
       if (status === 401) {
-        toast.error('Autentifikatsiya xatosi');
+        if (!suppressErrorToast) {
+          toast.error('Autentifikatsiya xatosi');
+        }
         setAdminToken('');
       } else if (status === 403) {
-        toast.error('Ruxsat yo\'q');
+        if (!suppressErrorToast) {
+          toast.error('Ruxsat yo\'q');
+        }
       } else if (status === 404) {
-        toast.error('Topilmadi');
+        if (!suppressErrorToast) {
+          toast.error('Topilmadi');
+        }
       } else if (status && status >= 500) {
-        toast.error('Server xatosi');
+        if (!suppressErrorToast) {
+          toast.error('Server xatosi');
+        }
       } else if (error.message === 'Network Error') {
-        toast.error('Internet ulanishi yo\'q');
+        if (!suppressErrorToast) {
+          toast.error('Internet ulanishi yo\'q');
+        }
       }
 
       return Promise.reject(error);
@@ -306,9 +320,14 @@ export const kiosksApi = {
 // Health check
 export const healthCheck = async (): Promise<boolean> => {
   try {
-    await createClient().get('/health');
+    await createClient({ suppressErrorToast: true }).get('/api/health');
     return true;
   } catch {
-    return false;
+    try {
+      await createClient({ suppressErrorToast: true }).get('/health');
+      return true;
+    } catch {
+      return false;
+    }
   }
 };

@@ -523,7 +523,18 @@ const AnimatedPathCanvas = ({
         ctx.restore();
       }
     },
-    [endPoint, markers, poi, showEmptyState, showMover, startPoint, steps, syncCanvasSize, title]
+    [
+      endPoint,
+      floor?.image_height,
+      floor?.image_width,
+      markers,
+      poi,
+      showEmptyState,
+      showMover,
+      startPoint,
+      steps,
+      syncCanvasSize,
+    ]
   );
 
   useEffect(() => {
@@ -559,15 +570,34 @@ const AnimatedPathCanvas = ({
       const canvas = canvasRef.current;
       const container = containerRef.current;
       const image = imageRef.current;
-      if (!canvas || !container || !image) {
+      if (!canvas || !container) {
         draw(null, 0);
         stopAnimation();
         return;
       }
 
+      const getFrameSize = () => {
+        if (image?.width && image.height) {
+          return { width: image.width, height: image.height };
+        }
+        if (floor?.image_width && floor.image_height) {
+          return { width: floor.image_width, height: floor.image_height };
+        }
+        if (points.length > 0) {
+          const xs = points.map((point) => point.x);
+          const ys = points.map((point) => point.y);
+          return {
+            width: Math.max(1, Math.max(...xs) - Math.min(...xs)),
+            height: Math.max(1, Math.max(...ys) - Math.min(...ys)),
+          };
+        }
+        return { width: 1000, height: 800 };
+      };
+
+      const frame = getFrameSize();
       const scale = Math.min(
-        container.clientWidth / image.width,
-        container.clientHeight / image.height
+        container.clientWidth / frame.width,
+        container.clientHeight / frame.height
       ) * 0.92;
       const scaledPoints = points.map((p) => ({ x: p.x * scale, y: p.y * scale }));
       const totalLength = computeLength(scaledPoints);
@@ -630,6 +660,8 @@ const AnimatedPathCanvas = ({
       startPoint,
       steps,
       stopAnimation,
+      floor?.image_height,
+      floor?.image_width,
     ]
   );
 
@@ -646,6 +678,9 @@ const AnimatedPathCanvas = ({
     if (!floor?.image_url) {
       imageRef.current = null;
       drawRef.current(null, 0);
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(animateRef.current);
+      }
       return;
     }
     const imageUrl = resolveMediaUrl(floor.image_url);
@@ -684,6 +719,9 @@ const AnimatedPathCanvas = ({
             if (cancelled) return;
             imageRef.current = null;
             drawRef.current(null, 0);
+            if (rafRef.current === null) {
+              rafRef.current = requestAnimationFrame(animateRef.current);
+            }
           });
       });
 
@@ -711,7 +749,6 @@ const AnimatedPathCanvas = ({
   }, [animationState, steps]);
 
   useEffect(() => {
-    if (!imageRef.current) return;
     if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(animateRef.current);
   }, [animationState, animateStatic, endPoint, poi.length, startPoint, steps]);

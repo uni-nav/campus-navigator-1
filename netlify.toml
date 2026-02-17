@@ -1,0 +1,15 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+  VITE_API_URL = "https://map.ranch.university/api/"
+  VITE_APP_NAME = "Universitet Navigatsiya Tizimi"
+  VITE_ENV = "production"
+  VITE_ENABLE_DEBUG = "false"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

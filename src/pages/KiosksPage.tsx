@@ -37,6 +37,7 @@ import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LoadingState } from '@/components/ui/loading-state';
+import { toast } from 'sonner';
 
 export default function KiosksPage() {
   const { data: kiosks, isLoading } = useKiosks();
@@ -69,28 +70,35 @@ export default function KiosksPage() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.floor_id) return;
+    if (!formData.name || !formData.floor_id) {
+      toast.error('Kiosk nomi va qavatini tanlang');
+      return;
+    }
 
-    if (editingId) {
-      await updateKiosk.mutateAsync({
-        id: editingId,
-        data: {
+    try {
+      if (editingId) {
+        await updateKiosk.mutateAsync({
+          id: editingId,
+          data: {
+            name: formData.name,
+            floor_id: parseInt(formData.floor_id),
+            waypoint_id: formData.waypoint_id || null,
+            description: formData.description || null,
+          },
+        });
+      } else {
+        await createKiosk.mutateAsync({
           name: formData.name,
           floor_id: parseInt(formData.floor_id),
           waypoint_id: formData.waypoint_id || null,
           description: formData.description || null,
-        },
-      });
-    } else {
-      await createKiosk.mutateAsync({
-        name: formData.name,
-        floor_id: parseInt(formData.floor_id),
-        waypoint_id: formData.waypoint_id || null,
-        description: formData.description || null,
-      });
+        });
+      }
+      setDialogOpen(false);
+      resetForm();
+    } catch {
+      // Error toast is handled in mutation hooks.
     }
-    setDialogOpen(false);
-    resetForm();
   };
 
   const handleEdit = (kiosk: Kiosk) => {

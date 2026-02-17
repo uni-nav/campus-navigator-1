@@ -12,7 +12,7 @@ CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "8080"]
 
 FROM deps AS build
 COPY . .
-ARG VITE_API_URL=http://localhost:8000
+ARG VITE_API_URL=https://map.ranch.university/api/
 ARG VITE_APP_NAME=Universitet Navigatsiya Tizimi
 ARG VITE_ENV=production
 ARG VITE_ENABLE_DEBUG=false

@@ -65,6 +65,8 @@ const WAYPOINT_LABELS: Record<WaypointType, string> = {
   hall: 'Zal',
 };
 
+const DEFAULT_IMAGE_TRANSFORM = { scale: 1, offsetX: 0, offsetY: 0 };
+
 export default function FloorEditorPage() {
 	  const { floorId } = useParams<{ floorId: string }>();
 	  const navigate = useNavigate();
@@ -122,25 +124,29 @@ export default function FloorEditorPage() {
 	    zoomRef.current = zoom;
 	  }, [zoom]);
 
-  const getTransform = () => imageTransform || { scale: 1, offsetX: 0, offsetY: 0 };
+  const toCanvasCoords = useCallback(
+    (x: number, y: number) => {
+      const { scale, offsetX, offsetY } = imageTransform || DEFAULT_IMAGE_TRANSFORM;
+      return { x: x * scale + offsetX, y: y * scale + offsetY };
+    },
+    [imageTransform]
+  );
 
-  const toCanvasCoords = (x: number, y: number) => {
-    const { scale, offsetX, offsetY } = getTransform();
-    return { x: x * scale + offsetX, y: y * scale + offsetY };
-  };
-
-	  const toImageCoords = (x: number, y: number) => {
-	    const { scale, offsetX, offsetY } = getTransform();
-	    const rawX = (x - offsetX) / scale;
-	    const rawY = (y - offsetY) / scale;
-	    if (imageSize?.width && imageSize?.height) {
-	      return {
-	        x: Math.max(0, Math.min(rawX, imageSize.width)),
-	        y: Math.max(0, Math.min(rawY, imageSize.height)),
-	      };
-	    }
-	    return { x: rawX, y: rawY };
-	  };
+	  const toImageCoords = useCallback(
+	    (x: number, y: number) => {
+	      const { scale, offsetX, offsetY } = imageTransform || DEFAULT_IMAGE_TRANSFORM;
+	      const rawX = (x - offsetX) / scale;
+	      const rawY = (y - offsetY) / scale;
+	      if (imageSize?.width && imageSize?.height) {
+	        return {
+	          x: Math.max(0, Math.min(rawX, imageSize.width)),
+	          y: Math.max(0, Math.min(rawY, imageSize.height)),
+	        };
+	      }
+	      return { x: rawX, y: rawY };
+	    },
+	    [imageTransform, imageSize?.height, imageSize?.width]
+	  );
 
 	  useEffect(() => {
 	    const onKeyDown = (e: KeyboardEvent) => {
@@ -521,7 +527,7 @@ export default function FloorEditorPage() {
     fabricCanvas,
     connections,
     waypoints,
-    imageTransform,
+    toCanvasCoords,
     startConnectionAnimation,
     stopConnectionAnimation,
   ]);
@@ -570,7 +576,7 @@ export default function FloorEditorPage() {
     });
 
     fabricCanvas.renderAll();
-  }, [fabricCanvas, waypoints, selectedWaypoint, editorMode, kiosks, imageTransform]);
+  }, [fabricCanvas, waypoints, selectedWaypoint, editorMode, kiosks, toCanvasCoords]);
 
   // Update canvas when data changes
   useEffect(() => {
@@ -777,10 +783,12 @@ export default function FloorEditorPage() {
 	    isPanModeActive,
 	    selectedWaypointType,
 	    connectionStartWaypoint,
+	    setConnectionStartWaypoint,
+	    setSelectedWaypoint,
 	    floorId,
 	    imageTransform,
-	    imageSize,
 	    floor?.image_url,
+	    toImageCoords,
 	  ]);
 
   // Handle object moving (drag waypoint)
@@ -840,7 +848,7 @@ export default function FloorEditorPage() {
       fabricCanvas.off('object:moving', handleObjectMoving);
       fabricCanvas.off('object:modified', handleObjectModified);
     };
-  }, [fabricCanvas, editorMode, imageTransform, imageSize, floor?.image_url]);
+  }, [fabricCanvas, editorMode, imageTransform, floor?.image_url, toImageCoords]);
 
   // Zoom functions (custom transform; do not use Fabric zoom)
   const handleZoomIn = () => {

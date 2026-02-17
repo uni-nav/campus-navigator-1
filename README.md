@@ -62,10 +62,16 @@ VITE_APP_NAME=Universitet Navigatsiya
 VITE_ENV=development
 
 # .env.production
-VITE_API_URL=https://api.yourdomain.com
+VITE_API_URL=https://map.ranch.university/api/
 VITE_SENTRY_DSN=your-sentry-dsn
 VITE_APP_VERSION=1.0.0
 ```
+
+## 🌐 Netlify Deploy
+
+- `netlify.toml` qo'shilgan (build: `npm run build`, publish: `dist`)
+- SPA route redirect yoqilgan (`/* -> /index.html`)
+- Production API URL: `https://map.ranch.university/api/`
 
 ## 📝 Sahifalar
 
