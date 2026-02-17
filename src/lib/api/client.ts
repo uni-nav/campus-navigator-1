@@ -323,11 +323,6 @@ export const healthCheck = async (): Promise<boolean> => {
     await createClient({ suppressErrorToast: true }).get('/api/health');
     return true;
   } catch {
-    try {
-      await createClient({ suppressErrorToast: true }).get('/health');
-      return true;
-    } catch {
-      return false;
-    }
+    return false;
   }
 };
