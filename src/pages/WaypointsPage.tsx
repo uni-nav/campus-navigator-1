@@ -1,19 +1,57 @@
 import { useEffect, useState } from 'react';
 import { MapPin, Filter } from 'lucide-react';
 import { Card } from '@/components/ui/card';
-import { floorsApi, waypointsApi, roomsApi } from '@/lib/api/client';
-import { Floor, Waypoint, Room } from '@/lib/api/types';
+import { floorsApi, waypointsApi, roomsApi, connectionsApi } from '@/lib/api/client';
+import { Floor, Waypoint, Room, Connection } from '@/lib/api/types';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { EmptyState } from '@/components/ui/empty-state';
 import { LoadingState } from '@/components/ui/loading-state';
 
+function ConnectedWaypointLabel({ waypointId }: { waypointId: string }) {
+  const [label, setLabel] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fetchWaypoint = async () => {
+      try {
+        const wp = await waypointsApi.getOne(waypointId);
+        if (isMounted) {
+          setLabel(wp.label || wp.id);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setLabel(waypointId); // Fallback to ID on error
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchWaypoint();
+    return () => { isMounted = false; };
+  }, [waypointId]);
+
+  return (
+    <div className="flex justify-between items-center text-muted-foreground pl-1 border-l-2 border-amber-500/30 ml-1">
+      <span>Qaysi nuqtaga:</span>
+      <span className="font-mono bg-background px-1.5 py-0.5 rounded border truncate max-w-[120px]" title={label || waypointId}>
+        {loading ? '...' : (label || waypointId)}
+      </span>
+    </div>
+  );
+}
+
 export default function WaypointsPage() {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedType, setSelectedType] = useState<string>('all');
 
@@ -41,12 +79,14 @@ export default function WaypointsPage() {
       if (!selectedFloorId) return;
 
       try {
-        const [waypointsData, roomsData] = await Promise.all([
+        const [waypointsData, roomsData, connectionsData] = await Promise.all([
           waypointsApi.getByFloor(selectedFloorId),
           roomsApi.getByFloor(selectedFloorId),
+          connectionsApi.getByFloor(selectedFloorId),
         ]);
         setWaypoints(waypointsData);
         setRooms(roomsData);
+        setConnections(connectionsData);
       } catch (error) {
         logger.error('Error', error);
       }
@@ -184,8 +224,17 @@ export default function WaypointsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filteredWaypoints.map((waypoint, index) => {
                 const linkedRoom = rooms.find((r) => r.waypoint_id === waypoint.id);
+
+                // Find implicit vertical connections (connections where the other endpoint is not on this floor)
+                // Since `waypoints` only contains waypoints for `selectedFloorId`, if a connection links to an ID not in `waypoints`, it's a vertical link.
+                const implicitVerticalConns = connections.filter(c =>
+                  (c.from_waypoint_id === waypoint.id && !waypoints.find(w => w.id === c.to_waypoint_id)) ||
+                  (c.to_waypoint_id === waypoint.id && !waypoints.find(w => w.id === c.from_waypoint_id))
+                );
+
+                const hasExplicitLink = !!(waypoint.connects_to_floor || waypoint.connects_to_waypoint);
                 const hasVerticalLink = (waypoint.type === 'stairs' || waypoint.type === 'elevator') &&
-                  (waypoint.connects_to_floor || waypoint.connects_to_waypoint);
+                  (hasExplicitLink || implicitVerticalConns.length > 0);
 
                 return (
                   <Card
@@ -252,13 +301,15 @@ export default function WaypointsPage() {
                               )}
 
                               {waypoint.connects_to_waypoint && (
-                                <div className="flex justify-between items-center text-muted-foreground pl-1 border-l-2 border-amber-500/30 ml-1">
-                                  <span>Qaysi nuqtaga:</span>
-                                  <span className="font-mono bg-background px-1.5 py-0.5 rounded border truncate max-w-[120px]" title={waypoint.connects_to_waypoint}>
-                                    {waypoint.connects_to_waypoint}
-                                  </span>
-                                </div>
+                                <ConnectedWaypointLabel waypointId={waypoint.connects_to_waypoint} />
                               )}
+
+                              {implicitVerticalConns.map(conn => {
+                                const targetId = conn.from_waypoint_id === waypoint.id ? conn.to_waypoint_id : conn.from_waypoint_id;
+                                return (
+                                  <ConnectedWaypointLabel key={conn.id} waypointId={targetId} />
+                                );
+                              })}
                             </>
                           )}
                         </div>
