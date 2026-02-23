@@ -101,19 +101,21 @@ export default function WaypointsPage() {
       case 'room': return 'bg-green-500';
       case 'stairs': return 'bg-yellow-500';
       case 'elevator': return 'bg-purple-500';
-      case 'hall': return 'bg-red-500';
+      case 'hall': return 'bg-rose-500';
+      case 'unconnected': return 'bg-destructive';
       default: return 'bg-gray-500';
     }
   };
 
   const getTypeLabel = (type: string) => {
     switch (type) {
+      case 'all': return 'Barchasi';
       case 'hallway': return 'Koridor';
       case 'room': return 'Xona';
       case 'stairs': return 'Zina';
       case 'elevator': return 'Lift';
       case 'hall': return 'Zal';
-      case 'all': return 'Barchasi';
+      case 'unconnected': return "Bog'lanmagan";
       default: return type;
     }
   };
@@ -172,14 +174,14 @@ export default function WaypointsPage() {
               <Filter className="w-4 h-4" />
               <span className="text-sm font-medium">Filtr:</span>
             </div>
-            {['all', 'hallway', 'room', 'stairs', 'elevator', 'hall'].map((type) => (
+            {['all', 'hallway', 'room', 'stairs', 'elevator', 'hall', 'unconnected'].map((type) => (
               <button
                 key={type}
                 onClick={() => setSelectedType(type)}
                 className={cn(
                   'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all border flex items-center gap-2',
                   selectedType === type
-                    ? 'bg-primary text-primary-foreground border-primary'
+                    ? (type === 'unconnected' ? 'bg-destructive text-destructive-foreground border-destructive' : 'bg-primary text-primary-foreground border-primary')
                     : 'bg-background hover:bg-muted border-border text-muted-foreground'
                 )}
               >
@@ -192,15 +194,25 @@ export default function WaypointsPage() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-            {['hallway', 'room', 'stairs', 'elevator', 'hall'].map((type) => {
-              const count = waypoints.filter((w) => w.type === type).length;
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4 mb-8">
+            {['hallway', 'room', 'stairs', 'elevator', 'hall', 'unconnected'].map((type) => {
+              const count = type === 'unconnected'
+                ? waypoints.filter(w => !connections.some(c => c.from_waypoint_id === w.id || c.to_waypoint_id === w.id)).length
+                : waypoints.filter((w) => w.type === type).length;
+
               return (
-                <Card key={type} className={cn("p-4 transition-all cursor-pointer", selectedType === type ? "ring-2 ring-primary" : "")} onClick={() => setSelectedType(type)}>
+                <Card
+                  key={type}
+                  className={cn(
+                    "p-4 transition-all cursor-pointer",
+                    selectedType === type ? (type === 'unconnected' ? "ring-2 ring-destructive" : "ring-2 ring-primary") : ""
+                  )}
+                  onClick={() => setSelectedType(type)}
+                >
                   <div className="flex items-center gap-3">
                     <div className={cn('w-3 h-3 rounded-full', getTypeColor(type))} />
                     <div>
-                      <p className="text-2xl font-bold text-foreground">{count}</p>
+                      <p className={cn("text-2xl font-bold", type === 'unconnected' && count > 0 ? "text-destructive" : "text-foreground")}>{count}</p>
                       <p className="text-xs text-muted-foreground">{getTypeLabel(type)}</p>
                     </div>
                   </div>
