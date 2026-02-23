@@ -296,6 +296,7 @@ export default function FloorsPage() {
                       variant="ghost"
                       size="icon"
                       className="h-8 w-8 hover:bg-muted"
+                      data-stop-nav
                       onClick={(e) => {
                         e.stopPropagation();
                         setEditingFloor({

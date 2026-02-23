@@ -126,6 +126,7 @@ export interface MapAuditFloorInfo {
 export interface MapAuditComponent {
   component_id: number;
   waypoint_count: number;
+  waypoint_ids: string[];
   floor_ids: number[];
   floor_numbers: number[];
 }

@@ -204,6 +204,11 @@ export default function SettingsPage() {
                       {auditResult.components.map(comp => (
                         <li key={comp.component_id}>
                           Graf {comp.component_id}: {comp.waypoint_count} ta nuqta (Qavatlar: {comp.floor_numbers.join(', ')})
+                          {comp.waypoint_count <= 5 && comp.waypoint_ids && comp.waypoint_ids.length > 0 && (
+                            <span className="block mt-0.5 opacity-80 text-[10px] font-mono">
+                              Nuqta IDlari: {comp.waypoint_ids.join(', ')}
+                            </span>
+                          )}
                         </li>
                       ))}
                     </ul>
