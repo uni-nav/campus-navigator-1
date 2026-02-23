@@ -183,37 +183,89 @@ export default function SettingsPage() {
             </Button>
 
             {auditResult && (
-              <div className="space-y-3 rounded-lg bg-muted p-3 text-sm">
-                <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-4 rounded-lg bg-muted p-4 text-sm">
+                <div className="grid grid-cols-2 gap-3 font-medium">
                   <div>Qavatlar: {auditResult.summary.floors}</div>
                   <div>Nuqtalar: {auditResult.summary.waypoints}</div>
                   <div>Bog'lanishlar: {auditResult.summary.connections}</div>
-                  <div>Komponentlar: {auditResult.summary.components}</div>
+                  <div className={auditResult.summary.components > 1 ? "text-amber-600" : ""}>
+                    Graf soni: {auditResult.summary.components}
+                  </div>
+                  <div className={(auditResult.summary.unattached_waypoints || 0) > 0 ? "text-destructive" : ""}>
+                    Biriktirilmagan nuqtalar: {auditResult.summary.unattached_waypoints || 0}
+                  </div>
+                  <div className="text-primary">Vertikal bog'lanishlar: {auditResult.summary.vertical_connections || 0}</div>
                 </div>
 
-                {auditResult.summary.disconnected_floors.length > 0 && (
-                  <div className="text-amber-700">
-                    Uzilgan qavatlar:{' '}
+                {auditResult.components && auditResult.components.length > 1 && (
+                  <div className="p-3 bg-amber-500/10 rounded-md border border-amber-500/20 text-xs text-amber-700 dark:text-amber-400">
+                    <p className="font-semibold mb-1">⚠️ Xaritada {auditResult.components.length} ta alohida graf mavjud (barcha nuqtalar o'zaro tutashmagan):</p>
+                    <ul className="list-disc pl-4 space-y-1 mt-2">
+                      {auditResult.components.map(comp => (
+                        <li key={comp.component_id}>
+                          Graf {comp.component_id}: {comp.waypoint_count} ta nuqta (Qavatlar: {comp.floor_numbers.join(', ')})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {auditResult.summary.disconnected_floors && auditResult.summary.disconnected_floors.length > 0 && (
+                  <div className="text-amber-700 dark:text-amber-400">
+                    <span className="font-semibold">Uzilgan qavatlar:</span>{' '}
                     {auditResult.summary.disconnected_floors
                       .map((f) => f.name || `ID ${f.id}`)
                       .join(', ')}
                   </div>
                 )}
 
-                {auditResult.summary.floors_with_no_waypoints.length > 0 && (
-                  <div className="text-amber-700">
-                    Nuqtasiz qavatlar:{' '}
+                {auditResult.summary.floors_with_no_waypoints && auditResult.summary.floors_with_no_waypoints.length > 0 && (
+                  <div className="text-amber-700 dark:text-amber-400">
+                    <span className="font-semibold">Nuqtasiz qavatlar:</span>{' '}
                     {auditResult.summary.floors_with_no_waypoints
                       .map((f) => f.name || `ID ${f.id}`)
                       .join(', ')}
                   </div>
                 )}
 
-                {(auditResult.summary.legacy_one_way_links > 0 ||
-                  auditResult.summary.stairs_without_vertical_links > 0) && (
-                  <div className="text-destructive">
-                    Bir yo'nalish linklar: {auditResult.summary.legacy_one_way_links} •
-                    Vertikal link yo'q: {auditResult.summary.stairs_without_vertical_links}
+                {((auditResult.summary.legacy_one_way_links || 0) > 0 ||
+                  (auditResult.summary.stairs_without_vertical_links || 0) > 0) && (
+                    <div className="text-destructive font-medium">
+                      Bir yo'nalish linklar: {auditResult.summary.legacy_one_way_links || 0} •
+                      Vertikal link yo'q: {auditResult.summary.stairs_without_vertical_links || 0}
+                    </div>
+                  )}
+
+                {auditResult.unattached_waypoints && auditResult.unattached_waypoints.length > 0 && (
+                  <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20 text-xs">
+                    <p className="font-semibold text-destructive mb-1">Biriktirilmagan nuqtalar:</p>
+                    <ul className="list-disc pl-4 space-y-1 text-destructive/90 max-h-32 overflow-y-auto mt-2">
+                      {auditResult.unattached_waypoints.map(wp => (
+                        <li key={wp.waypoint_id}>
+                          {wp.type} - {wp.label || wp.waypoint_id} ({wp.floor.name || `Qavat ${wp.floor.floor_number}`})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {auditResult.vertical_connections && auditResult.vertical_connections.length > 0 && (
+                  <div className="p-3 bg-primary/5 rounded-md border border-primary/20 text-xs">
+                    <p className="font-semibold text-primary mb-1">Vertikal bog'lanishlar (Zina/Lift):</p>
+                    <ul className="list-disc pl-4 space-y-2 text-muted-foreground max-h-40 overflow-y-auto mt-2">
+                      {auditResult.vertical_connections.map((vc, i) => (
+                        <li key={i} className="flex items-center gap-2">
+                          <span className="font-medium">{vc.type === 'stairs' ? 'Zina:' : 'Lift:'}</span>
+                          <span className="px-2 py-0.5 bg-background rounded border">
+                            {vc.from_floor.name || `Qavat ${vc.from_floor.floor_number}`}
+                          </span>
+                          <span>↔</span>
+                          <span className="px-2 py-0.5 bg-background rounded border">
+                            {vc.to_floor.name || `Qavat ${vc.to_floor.floor_number}`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </div>

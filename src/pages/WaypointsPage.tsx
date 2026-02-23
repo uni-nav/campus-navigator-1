@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MapPin } from 'lucide-react';
+import { MapPin, Filter } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { floorsApi, waypointsApi, roomsApi } from '@/lib/api/client';
 import { Floor, Waypoint, Room } from '@/lib/api/types';
@@ -15,6 +15,7 @@ export default function WaypointsPage() {
   const [waypoints, setWaypoints] = useState<Waypoint[]>([]);
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedType, setSelectedType] = useState<string>('all');
 
   useEffect(() => {
     const fetchFloors = async () => {
@@ -72,13 +73,24 @@ export default function WaypointsPage() {
       case 'stairs': return 'Zina';
       case 'elevator': return 'Lift';
       case 'hall': return 'Zal';
+      case 'all': return 'Barchasi';
       default: return type;
     }
+  };
+
+  const getFloorName = (floorId: number | null) => {
+    if (!floorId) return '';
+    const floor = floors.find(f => f.id === floorId);
+    return floor ? floor.name || `Qavat ${floor.floor_number}` : `Qavat ${floorId}`;
   };
 
   if (loading) {
     return <LoadingState />;
   }
+
+  const filteredWaypoints = selectedType === 'all'
+    ? waypoints
+    : waypoints.filter(w => w.type === selectedType);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 animate-fade-in">
@@ -114,12 +126,37 @@ export default function WaypointsPage() {
             ))}
           </div>
 
+          {/* Type Filter */}
+          <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 py-1">
+            <div className="flex items-center gap-2 mr-2 text-muted-foreground">
+              <Filter className="w-4 h-4" />
+              <span className="text-sm font-medium">Filtr:</span>
+            </div>
+            {['all', 'hallway', 'room', 'stairs', 'elevator', 'hall'].map((type) => (
+              <button
+                key={type}
+                onClick={() => setSelectedType(type)}
+                className={cn(
+                  'px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all border flex items-center gap-2',
+                  selectedType === type
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-background hover:bg-muted border-border text-muted-foreground'
+                )}
+              >
+                {type !== 'all' && (
+                  <div className={cn('w-2 h-2 rounded-full', getTypeColor(type))} />
+                )}
+                {getTypeLabel(type)}
+              </button>
+            ))}
+          </div>
+
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             {['hallway', 'room', 'stairs', 'elevator', 'hall'].map((type) => {
               const count = waypoints.filter((w) => w.type === type).length;
               return (
-                <Card key={type} className="p-4">
+                <Card key={type} className={cn("p-4 transition-all cursor-pointer", selectedType === type ? "ring-2 ring-primary" : "")} onClick={() => setSelectedType(type)}>
                   <div className="flex items-center gap-3">
                     <div className={cn('w-3 h-3 rounded-full', getTypeColor(type))} />
                     <div>
@@ -139,41 +176,92 @@ export default function WaypointsPage() {
               title="Nuqtalar yo'q"
               description="Qavatlar sahifasidan nuqtalarni qo'shing"
             />
+          ) : filteredWaypoints.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground bg-muted/30 rounded-lg border border-dashed">
+              Bu qavatda <b>{getTypeLabel(selectedType)}</b> turidagi nuqtalar topilmadi
+            </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {waypoints.map((waypoint, index) => {
+              {filteredWaypoints.map((waypoint, index) => {
                 const linkedRoom = rooms.find((r) => r.waypoint_id === waypoint.id);
+                const hasVerticalLink = (waypoint.type === 'stairs' || waypoint.type === 'elevator') &&
+                  (waypoint.connects_to_floor || waypoint.connects_to_waypoint);
 
                 return (
                   <Card
                     key={waypoint.id}
-                    className="p-4 animate-fade-in"
+                    className="p-4 animate-fade-in flex flex-col h-full"
                     style={{ animationDelay: `${index * 30}ms` }}
                   >
                     <div className="flex items-start gap-3">
                       <div
                         className={cn(
-                          'w-8 h-8 rounded-lg flex items-center justify-center',
+                          'w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5',
                           getTypeColor(waypoint.type) + '/20'
                         )}
                       >
                         <div className={cn('w-3 h-3 rounded-full', getTypeColor(waypoint.type))} />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-foreground truncate">
-                          {waypoint.label || waypoint.id}
-                        </h4>
-                        <p className="text-sm text-muted-foreground">
-                          {getTypeLabel(waypoint.type)}
-                        </p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          ({waypoint.x}, {waypoint.y})
-                        </p>
-                        {linkedRoom && (
-                          <p className="text-xs text-primary mt-2">
-                            → {linkedRoom.name}
-                          </p>
-                        )}
+                        <div className="flex justify-between items-start">
+                          <h4 className="font-medium text-foreground truncate" title={waypoint.label || waypoint.id}>
+                            {waypoint.label || waypoint.id}
+                          </h4>
+                          <span className="text-[10px] text-muted-foreground shrink-0 ml-2 font-mono bg-muted px-1.5 py-0.5 rounded">
+                            {waypoint.id.substring(0, 6)}...
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-1 mb-2">
+                          <span className={cn("text-[10px] font-medium px-2 py-0.5 rounded-full", getTypeColor(waypoint.type) + '/10 text-foreground')}>
+                            {getTypeLabel(waypoint.type)}
+                          </span>
+                        </div>
+
+                        <div className="bg-muted/50 rounded-md p-2 mt-3 space-y-1.5 text-xs">
+                          <div className="flex justify-between items-center text-muted-foreground">
+                            <span>Koordinata:</span>
+                            <span className="font-mono bg-background px-1.5 py-0.5 rounded border">
+                              {waypoint.x}, {waypoint.y}
+                            </span>
+                          </div>
+
+                          {linkedRoom && (
+                            <div className="flex justify-between items-center text-primary">
+                              <span>Biriktirilgan xona:</span>
+                              <span className="font-medium bg-primary/10 px-1.5 py-0.5 rounded">
+                                {linkedRoom.name}
+                              </span>
+                            </div>
+                          )}
+
+                          {hasVerticalLink && (
+                            <>
+                              <div className="border-t border-border mt-2 pt-2 mb-1"></div>
+                              <div className="flex items-center gap-1.5 text-amber-600 dark:text-amber-500 font-medium">
+                                <span className="shrink-0">{waypoint.type === 'stairs' ? 'Zina yo\'li:' : 'Lift yo\'li:'}</span>
+                              </div>
+
+                              {waypoint.connects_to_floor && (
+                                <div className="flex justify-between items-center text-muted-foreground pl-1 border-l-2 border-amber-500/30 ml-1">
+                                  <span>Qaysi qavatga:</span>
+                                  <span className="bg-background px-1.5 py-0.5 rounded border truncate max-w-[120px]" title={getFloorName(waypoint.connects_to_floor)}>
+                                    {getFloorName(waypoint.connects_to_floor)}
+                                  </span>
+                                </div>
+                              )}
+
+                              {waypoint.connects_to_waypoint && (
+                                <div className="flex justify-between items-center text-muted-foreground pl-1 border-l-2 border-amber-500/30 ml-1">
+                                  <span>Qaysi nuqtaga:</span>
+                                  <span className="font-mono bg-background px-1.5 py-0.5 rounded border truncate max-w-[120px]" title={waypoint.connects_to_waypoint}>
+                                    {waypoint.connects_to_waypoint}
+                                  </span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </Card>

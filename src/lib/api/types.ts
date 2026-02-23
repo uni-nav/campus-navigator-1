@@ -147,11 +147,30 @@ export interface MapAuditSummary {
   floors_with_no_waypoints: MapAuditFloorInfo[];
   legacy_one_way_links: number;
   stairs_without_vertical_links: number;
+  unattached_waypoints: number;
+  vertical_connections: number;
+}
+
+export interface UnattachedWaypoint {
+  waypoint_id: string;
+  label: string | null;
+  type: string;
+  floor: MapAuditFloorInfo;
+}
+
+export interface VerticalConnection {
+  from_id: string;
+  from_floor: MapAuditFloorInfo;
+  to_id: string;
+  to_floor: MapAuditFloorInfo;
+  type: string;
 }
 
 export interface MapAuditResponse {
   summary: MapAuditSummary;
   components: MapAuditComponent[];
+  vertical_connections: VerticalConnection[];
+  unattached_waypoints: UnattachedWaypoint[];
   issues: {
     legacy_one_way_links: MapAuditIssue[];
     stairs_without_vertical_links: MapAuditIssue[];
