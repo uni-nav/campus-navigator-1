@@ -25,7 +25,9 @@ export default function FloorsPage() {
   const [floors, setFloors] = useState<Floor[]>([]);
   const [loading, setLoading] = useState(true);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [newFloor, setNewFloor] = useState<FloorCreate>({ name: '', floor_number: 1 });
+  const [editingFloor, setEditingFloor] = useState<{ id: number; name: string; floor_number: number } | null>(null);
   const navigate = useNavigate();
 
   const fetchFloors = async () => {
@@ -57,6 +59,26 @@ export default function FloorsPage() {
       fetchFloors();
     } catch (error) {
       toast.error('Qavat yaratishda xato');
+    }
+  };
+
+  const handleEdit = async () => {
+    if (!editingFloor || !editingFloor.name.trim()) {
+      toast.error('Qavat nomini kiriting');
+      return;
+    }
+
+    try {
+      await floorsApi.update(editingFloor.id, {
+        name: editingFloor.name,
+        floor_number: editingFloor.floor_number
+      });
+      toast.success('Qavat tahrirlandi');
+      setIsEditOpen(false);
+      setEditingFloor(null);
+      fetchFloors();
+    } catch (error) {
+      toast.error('Qavat tahrirlashda xato');
     }
   };
 
@@ -134,6 +156,43 @@ export default function FloorsPage() {
           </Dialog>
         }
       />
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Qavatni tahrirlash</DialogTitle>
+          </DialogHeader>
+          {editingFloor && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Qavat nomi</Label>
+                <Input
+                  placeholder="Masalan: 1-qavat"
+                  aria-label="Qavat nomi"
+                  value={editingFloor.name}
+                  onChange={(e) => setEditingFloor({ ...editingFloor, name: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Qavat raqami</Label>
+                <Input
+                  type="number"
+                  aria-label="Qavat raqami"
+                  value={editingFloor.floor_number}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    setEditingFloor({ ...editingFloor, floor_number: isNaN(val) ? 0 : val });
+                  }}
+                />
+              </div>
+              <Button onClick={handleEdit} className="w-full">
+                Saqlash
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {floors.length === 0 ? (
         <EmptyState
@@ -233,7 +292,22 @@ export default function FloorsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2 text-muted-foreground">
-                    <Edit2 className="w-4 h-4" />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 hover:bg-muted"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingFloor({
+                          id: floor.id,
+                          name: floor.name,
+                          floor_number: floor.floor_number
+                        });
+                        setIsEditOpen(true);
+                      }}
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
                 {floor.image_width && floor.image_height && (
