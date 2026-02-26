@@ -56,6 +56,13 @@ export const roomCreateSchema = z.object({
         .trim()
         .optional()
         .or(z.literal('')),
+
+    keywords: z
+        .string()
+        .max(500, 'Kalit so\'zlar 500 ta belgidan oshmasligi kerak')
+        .trim()
+        .optional()
+        .or(z.literal('')),
 });
 
 export type RoomCreateInput = z.infer<typeof roomCreateSchema>;

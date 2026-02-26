@@ -78,18 +78,21 @@ export interface Room {
   name: string;
   waypoint_id: string | null;
   floor_id: number | null;
+  keywords: string | null;
 }
 
 export interface RoomCreate {
   name: string;
   waypoint_id?: string | null;
   floor_id?: number | null;
+  keywords?: string | null;
 }
 
 export interface RoomUpdate {
   name?: string | null;
   waypoint_id?: string | null;
   floor_id?: number | null;
+  keywords?: string | null;
 }
 
 export interface NavigationRequest {

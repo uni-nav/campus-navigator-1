@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Search, DoorOpen, Link2 } from 'lucide-react';
+import { Plus, Trash2, Search, DoorOpen, Link2, Pencil, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { roomsApi, floorsApi, waypointsApi } from '@/lib/api/client';
-import { Room, RoomCreate, Floor, Waypoint } from '@/lib/api/types';
+import { Room, RoomCreate, RoomUpdate, Floor, Waypoint } from '@/lib/api/types';
 import { toast } from 'sonner';
 import { logger } from '@/lib/logger';
 import { cn } from '@/lib/utils';
@@ -36,10 +37,17 @@ export default function RoomsPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [selectedFloorId, setSelectedFloorId] = useState<number | null>(null);
 
+  // Edit state
+  const [editingRoom, setEditingRoom] = useState<Room | null>(null);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editForm, setEditForm] = useState<RoomUpdate>({});
+  const [editWaypoints, setEditWaypoints] = useState<Waypoint[]>([]);
+
   const [newRoom, setNewRoom] = useState<Partial<RoomCreate>>({
     name: '',
     waypoint_id: null,
     floor_id: 0,
+    keywords: '',
   });
 
   const fetchData = async () => {
@@ -68,6 +76,16 @@ export default function RoomsPage() {
     }
   };
 
+  // Fetch waypoints for edit dialog
+  const fetchEditWaypoints = async (floorId: number) => {
+    try {
+      const data = await waypointsApi.getByFloor(floorId);
+      setEditWaypoints(data.filter((w) => w.type === 'room'));
+    } catch (error) {
+      logger.error('Error fetching waypoints for edit', error);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, []);
@@ -89,6 +107,7 @@ export default function RoomsPage() {
         name: newRoom.name,
         waypoint_id: newRoom.waypoint_id || null,
         floor_id: newRoom.floor_id,
+        keywords: newRoom.keywords?.trim() || null,
       };
 
       await roomsApi.create(roomToCreate);
@@ -98,10 +117,50 @@ export default function RoomsPage() {
         name: '',
         waypoint_id: null,
         floor_id: 0,
+        keywords: '',
       });
       fetchData();
     } catch (error) {
       toast.error('Xona yaratishda xato');
+    }
+  };
+
+  const handleEdit = (room: Room) => {
+    setEditingRoom(room);
+    setEditForm({
+      name: room.name,
+      keywords: room.keywords || '',
+      waypoint_id: room.waypoint_id,
+      floor_id: room.floor_id,
+    });
+    if (room.floor_id) {
+      fetchEditWaypoints(room.floor_id);
+    }
+    setIsEditOpen(true);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingRoom) return;
+    if (!editForm.name?.trim()) {
+      toast.error("Xona nomi bo'sh bo'lishi mumkin emas");
+      return;
+    }
+
+    try {
+      const updateData: RoomUpdate = {
+        name: editForm.name?.trim(),
+        keywords: editForm.keywords?.trim() || null,
+        waypoint_id: editForm.waypoint_id,
+        floor_id: editForm.floor_id,
+      };
+
+      await roomsApi.update(editingRoom.id, updateData);
+      toast.success('Xona yangilandi');
+      setIsEditOpen(false);
+      setEditingRoom(null);
+      fetchData();
+    } catch (error) {
+      toast.error('Xona yangilashda xato');
     }
   };
 
@@ -118,7 +177,10 @@ export default function RoomsPage() {
   };
 
   const filteredRooms = rooms.filter((room) => {
-    const matchesSearch = room.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.toLowerCase();
+    const matchesSearch =
+      room.name.toLowerCase().includes(query) ||
+      (room.keywords && room.keywords.toLowerCase().includes(query));
     const matchesFloor = !selectedFloorId || room.floor_id === selectedFloorId;
     return matchesSearch && matchesFloor;
   });
@@ -160,6 +222,20 @@ export default function RoomsPage() {
                     value={newRoom.name || ''}
                     onChange={(e) => setNewRoom({ ...newRoom, name: e.target.value })}
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Kalit so'zlar</Label>
+                  <Textarea
+                    placeholder="Masalan: dekanat kutubxona o'quv bo'limi"
+                    aria-label="Kalit so'zlar"
+                    value={newRoom.keywords || ''}
+                    onChange={(e) => setNewRoom({ ...newRoom, keywords: e.target.value })}
+                    rows={2}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Qidiruv uchun kalit so'zlar. Kiosk va admin panelda qidirganda ishlatiladi.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -218,7 +294,7 @@ export default function RoomsPage() {
         <div className="relative flex-1 sm:max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Xonalarni qidirish..."
+            placeholder="Xonalarni qidirish (nom yoki kalit so'z)..."
             aria-label="Xona qidirish"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -276,23 +352,40 @@ export default function RoomsPage() {
                   <h3 className="font-semibold text-foreground truncate">{room.name}</h3>
                   <p className="text-sm text-muted-foreground">{getFloorName(room.floor_id)}</p>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
-                  onClick={() => handleDelete(room.id)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+                    onClick={() => handleEdit(room)}
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                    onClick={() => handleDelete(room.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
 
+              {room.keywords && (
+                <div className="mt-2 flex items-start gap-2 text-xs text-muted-foreground">
+                  <Tag className="w-3 h-3 mt-0.5 shrink-0" />
+                  <span className="line-clamp-2">{room.keywords}</span>
+                </div>
+              )}
+
               {room.waypoint_id ? (
-                <div className="mt-3 flex items-center gap-2 text-xs text-primary">
+                <div className="mt-2 flex items-center gap-2 text-xs text-primary">
                   <Link2 className="w-3 h-3" />
                   <span>Nuqtaga bog'langan</span>
                 </div>
               ) : (
-                <div className="mt-3 flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                   <Link2 className="w-3 h-3" />
                   <span>Bog'lanmagan</span>
                 </div>
@@ -301,6 +394,93 @@ export default function RoomsPage() {
           ))}
         </div>
       )}
+
+      {/* Edit Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={(open) => {
+        setIsEditOpen(open);
+        if (!open) setEditingRoom(null);
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xonani tahrirlash</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Xona nomi *</Label>
+              <Input
+                value={editForm.name || ''}
+                onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                aria-label="Xona nomi"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Kalit so'zlar</Label>
+              <Textarea
+                placeholder="Masalan: dekanat kutubxona o'quv bo'limi"
+                aria-label="Kalit so'zlar"
+                value={editForm.keywords || ''}
+                onChange={(e) => setEditForm({ ...editForm, keywords: e.target.value })}
+                rows={2}
+              />
+              <p className="text-xs text-muted-foreground">
+                Qidiruv uchun kalit so'zlar. Kiosk va admin panelda qidirganda ishlatiladi.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Qavat</Label>
+              <Select
+                value={editForm.floor_id?.toString() || ''}
+                onValueChange={(value) => {
+                  const floorId = parseInt(value);
+                  setEditForm({ ...editForm, floor_id: floorId, waypoint_id: editForm.waypoint_id });
+                  fetchEditWaypoints(floorId);
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Qavatni tanlang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {floors.map((floor) => (
+                    <SelectItem key={floor.id} value={floor.id.toString()}>
+                      {floor.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {editForm.floor_id && editWaypoints.length > 0 && (
+              <div className="space-y-2">
+                <Label>Nuqtaga bog'lash</Label>
+                <Select
+                  value={editForm.waypoint_id || 'none'}
+                  onValueChange={(value) =>
+                    setEditForm({ ...editForm, waypoint_id: value === 'none' ? null : value })
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Nuqtani tanlang" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Bog'lamaslik</SelectItem>
+                    {editWaypoints.map((wp) => (
+                      <SelectItem key={wp.id} value={wp.id}>
+                        {wp.label || wp.id} ({wp.x}, {wp.y})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            <Button onClick={handleUpdate} className="w-full">
+              Saqlash
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
